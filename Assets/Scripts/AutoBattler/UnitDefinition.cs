@@ -14,6 +14,7 @@ namespace AutoBattler
         [SerializeField] private float attackRange = 3f;
         [SerializeField] private float speed = 3f;
         [SerializeField] private float reloadTime = 1f;
+        [SerializeField] private string navigationAgentType;
         [SerializeField] private AmmoDefinition[] ammunition;
 
         public UnitDefinition(
@@ -25,6 +26,7 @@ namespace AutoBattler
             float attackRange,
             float speed,
             float reloadTime,
+            string navigationAgentType,
             params AmmoDefinition[] ammunition)
         {
             this.unitName = unitName;
@@ -35,6 +37,7 @@ namespace AutoBattler
             this.attackRange = attackRange;
             this.speed = speed;
             this.reloadTime = reloadTime;
+            this.navigationAgentType = navigationAgentType;
             this.ammunition = ammunition;
         }
 
@@ -46,6 +49,7 @@ namespace AutoBattler
         public float AttackRange => attackRange;
         public float Speed => speed;
         public float ReloadTime => reloadTime;
+        public string NavigationAgentType => navigationAgentType;
         public AmmoDefinition[] Ammunition => ammunition;
     }
 }

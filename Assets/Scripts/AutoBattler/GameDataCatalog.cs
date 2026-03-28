@@ -37,10 +37,10 @@ namespace AutoBattler
 
             var unitTemplates = new Dictionary<string, GameUnitTemplate>(StringComparer.OrdinalIgnoreCase)
             {
-                { "Guard Tank", new GameUnitTemplate("Guard Tank", "Guard Tank", UnitType.Tank, MissionType.Guard, 20, 2, 14f, 10f, 2.2f, 1.8f, new[] { "Tank Cannon", "Tank Shell" }) },
-                { "Assault Tank", new GameUnitTemplate("Assault Tank", "Assault Tank", UnitType.Tank, MissionType.SeekAndDestroy, 20, 2, 14f, 10f, 2.4f, 1.7f, new[] { "Tank Cannon", "Tank Shell" }) },
-                { "Guard Infantry", new GameUnitTemplate("Guard Infantry", "Guard Infantry", UnitType.Infantry, MissionType.Guard, 8, 0, 10f, 6f, 3.4f, 1.1f, new[] { "Rifle Burst", "Grenade" }) },
-                { "Raider Infantry", new GameUnitTemplate("Raider Infantry", "Raider Infantry", UnitType.Infantry, MissionType.SeekAndDestroy, 8, 0, 10f, 6f, 3.8f, 1.0f, new[] { "Rifle Burst", "Grenade" }) }
+                { "Guard Tank", new GameUnitTemplate("Guard Tank", "Guard Tank", UnitType.Tank, MissionType.Guard, 20, 2, 14f, 10f, 2.2f, 1.8f, string.Empty, new[] { "Tank Cannon", "Tank Shell" }) },
+                { "Assault Tank", new GameUnitTemplate("Assault Tank", "Assault Tank", UnitType.Tank, MissionType.SeekAndDestroy, 20, 2, 14f, 10f, 2.4f, 1.7f, string.Empty, new[] { "Tank Cannon", "Tank Shell" }) },
+                { "Guard Infantry", new GameUnitTemplate("Guard Infantry", "Guard Infantry", UnitType.Infantry, MissionType.Guard, 8, 0, 10f, 6f, 3.4f, 1.1f, string.Empty, new[] { "Rifle Burst", "Grenade" }) },
+                { "Raider Infantry", new GameUnitTemplate("Raider Infantry", "Raider Infantry", UnitType.Infantry, MissionType.SeekAndDestroy, 8, 0, 10f, 6f, 3.8f, 1.0f, string.Empty, new[] { "Rifle Burst", "Grenade" }) }
             };
 
             return new GameDataCatalog(ammoTemplates, unitTemplates);
@@ -82,6 +82,7 @@ namespace AutoBattler
             float attackRange,
             float speed,
             float reloadTime,
+            string navigationAgentType,
             string[] ammunitionTypes)
         {
             UnitTypeKey = unitTypeKey;
@@ -94,6 +95,7 @@ namespace AutoBattler
             AttackRange = attackRange;
             Speed = speed;
             ReloadTime = reloadTime;
+            NavigationAgentType = navigationAgentType;
             this.ammunitionTypes = ammunitionTypes;
         }
 
@@ -107,6 +109,7 @@ namespace AutoBattler
         public float AttackRange { get; }
         public float Speed { get; }
         public float ReloadTime { get; }
+        public string NavigationAgentType { get; }
 
         public UnitDefinition BuildDefinition(string resolvedUnitName, AmmoDefinition[] ammunition)
         {
@@ -119,6 +122,7 @@ namespace AutoBattler
                 AttackRange,
                 Speed,
                 ReloadTime,
+                NavigationAgentType,
                 ammunition);
         }
 

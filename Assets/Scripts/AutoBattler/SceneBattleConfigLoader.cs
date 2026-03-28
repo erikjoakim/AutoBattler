@@ -114,6 +114,7 @@ namespace AutoBattler
                 Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(source, "attackRange", template.AttackRange)),
                 Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(source, "speed", template.Speed)),
                 Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(source, "reloadTime", template.ReloadTime)),
+                JsonDataHelper.GetString(source, "navigationAgentType", template.NavigationAgentType),
                 resolvedAmmo);
 
             unitSpawnConfig = new UnitSpawnConfig

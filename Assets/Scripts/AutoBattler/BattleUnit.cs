@@ -276,6 +276,7 @@ namespace AutoBattler
                 agent = gameObject.AddComponent<NavMeshAgent>();
             }
 
+            agent.agentTypeID = NavMeshAgentTypeResolver.ResolveAgentTypeId(unitDefinition.NavigationAgentType);
             agent.speed = unitDefinition.Speed;
             agent.acceleration = Mathf.Max(8f, unitDefinition.Speed * 4f);
             agent.angularSpeed = 720f;

@@ -118,6 +118,7 @@ namespace AutoBattler
                     Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "attackRange", 3f)),
                     Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "speed", 3f)),
                     Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "reloadTime", 1f)),
+                    JsonDataHelper.GetString(item, "navigationAgentType", string.Empty),
                     ammoTypes.ToArray());
             }
 

@@ -11,6 +11,7 @@
       "attackRange": 10.0,
       "speed": 2.2,
       "reloadTime": 1.8,
+      "navigationAgentType": "",
       "ammunition": [
         "Tank Cannon",
         "Tank Shell"
@@ -27,6 +28,7 @@
       "attackRange": 10.0,
       "speed": 2.4,
       "reloadTime": 1.7,
+      "navigationAgentType": "TankAgent",
       "ammunition": [
         "Tank Cannon",
         "Tank Shell"
@@ -43,6 +45,7 @@
       "attackRange": 6.0,
       "speed": 3.4,
       "reloadTime": 1.1,
+      "navigationAgentType": "",
       "ammunition": [
         "Rifle Burst",
         "Grenade"
@@ -59,6 +62,7 @@
       "attackRange": 6.0,
       "speed": 3.8,
       "reloadTime": 1.0,
+      "navigationAgentType": "",
       "ammunition": [
         "Rifle Burst",
         "Grenade"

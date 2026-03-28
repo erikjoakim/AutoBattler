@@ -25,12 +25,12 @@ namespace AutoBattler
             ResetBattleState();
 
             var anchors = ResolveSceneAnchors();
+            var config = SceneBattleConfigLoader.LoadForActiveScene();
             if (BattleNavigationManager.Instance != null)
             {
-                BattleNavigationManager.Instance.RebuildNavigation();
+                BattleNavigationManager.Instance.RebuildNavigation(config);
             }
 
-            var config = SceneBattleConfigLoader.LoadForActiveScene();
             ConfigureCamera(anchors);
             SpawnBattlefield(anchors, config);
             InitializeObjectives(anchors);
