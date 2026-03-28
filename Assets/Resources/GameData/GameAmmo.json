@@ -1,0 +1,36 @@
+{
+  "ammunition": [
+    {
+      "ammoType": "Tank Cannon",
+      "ammoName": "Tank Cannon",
+      "requiredUserType": "Tank",
+      "damage": 6,
+      "radius": 0.6,
+      "ammunitionCount": -1
+    },
+    {
+      "ammoType": "Tank Shell",
+      "ammoName": "Tank Shell",
+      "requiredUserType": "Tank",
+      "damage": 4,
+      "radius": 2.5,
+      "ammunitionCount": -1
+    },
+    {
+      "ammoType": "Rifle Burst",
+      "ammoName": "Rifle Burst",
+      "requiredUserType": "Infantry",
+      "damage": 2,
+      "radius": 0.4,
+      "ammunitionCount": -1
+    },
+    {
+      "ammoType": "Grenade",
+      "ammoName": "Grenade",
+      "requiredUserType": "Infantry",
+      "damage": 3,
+      "radius": 1.8,
+      "ammunitionCount": -1
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "units": [
+    {
+      "unitType": "Guard Tank",
+      "unitName": "Guard Tank",
+      "classType": "Tank",
+      "mission": "Guard",
+      "maxHealth": 20,
+      "armor": 2,
+      "visionRange": 14.0,
+      "attackRange": 10.0,
+      "speed": 2.2,
+      "reloadTime": 1.8,
+      "ammunition": [
+        "Tank Cannon",
+        "Tank Shell"
+      ]
+    },
+    {
+      "unitType": "Assault Tank",
+      "unitName": "Assault Tank",
+      "classType": "Tank",
+      "mission": "SeekAndDestroy",
+      "maxHealth": 20,
+      "armor": 2,
+      "visionRange": 14.0,
+      "attackRange": 10.0,
+      "speed": 2.4,
+      "reloadTime": 1.7,
+      "ammunition": [
+        "Tank Cannon",
+        "Tank Shell"
+      ]
+    },
+    {
+      "unitType": "Guard Infantry",
+      "unitName": "Guard Infantry",
+      "classType": "Infantry",
+      "mission": "Guard",
+      "maxHealth": 8,
+      "armor": 0,
+      "visionRange": 10.0,
+      "attackRange": 6.0,
+      "speed": 3.4,
+      "reloadTime": 1.1,
+      "ammunition": [
+        "Rifle Burst",
+        "Grenade"
+      ]
+    },
+    {
+      "unitType": "Raider Infantry",
+      "unitName": "Raider Infantry",
+      "classType": "Infantry",
+      "mission": "SeekAndDestroy",
+      "maxHealth": 8,
+      "armor": 0,
+      "visionRange": 10.0,
+      "attackRange": 6.0,
+      "speed": 3.8,
+      "reloadTime": 1.0,
+      "ammunition": [
+        "Rifle Burst",
+        "Grenade"
+      ]
+    }
+  ]
+}

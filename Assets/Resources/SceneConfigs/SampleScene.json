@@ -1,0 +1,77 @@
+{
+  "formation": {
+    "unitsPerRow": 4,
+    "lateralSpacing": 3.5,
+    "forwardSpacing": 4.0,
+    "distanceFromStartPoint": 6.0
+  },
+  "blueTeam": {
+    "units": [
+      {
+        "unitName": "First Tank",
+        "unitType": "Guard Tank"
+      },
+      {
+        "unitName": "Fast Tank",
+        "unitType": "Guard Tank",
+        "speed": "*1.1",
+        "reloadTime": "-0.2"
+      },
+      {
+        "unitName": "Blue Shellers",
+        "unitType": "Assault Tank",
+        "count": 3,
+        "ammunition": [
+          {
+            "ammoType": "Tank Shell",
+            "damage": "+2",
+            "radius": "*1.2",
+            "ammunitionCount": 6
+          }
+        ]
+      },
+      {
+        "unitName": "Blue Line Infantry",
+        "unitType": "Guard Infantry",
+        "count": 4
+      },
+      {
+        "unitName": "Blue Raiders",
+        "unitType": "Raider Infantry",
+        "count": 4,
+        "speed": "+0.3"
+      }
+    ]
+  },
+  "redTeam": {
+    "units": [
+      {
+        "unitName": "Red Guard Tank",
+        "unitType": "Guard Tank"
+      },
+      {
+        "unitName": "Red Assault Tank",
+        "unitType": "Assault Tank",
+        "ammunition": [
+          {
+            "ammoType": "Tank Cannon",
+            "damage": "*1.15",
+            "ammunitionCount": 8
+          }
+        ]
+      },
+      {
+        "unitName": "Red Infantry Wall",
+        "unitType": "Guard Infantry",
+        "count": 2,
+        "armor": "+1"
+      },
+      {
+        "unitName": "Red Raiders",
+        "unitType": "Raider Infantry",
+        "count": 2,
+        "reloadTime": "*0.9"
+      }
+    ]
+  }
+}

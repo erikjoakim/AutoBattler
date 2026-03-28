@@ -31,8 +31,10 @@
 # Jetbrains Rider personal-layer settings
 *.DotSettings.user
 
-# Visual Studio cache directory
+# IDE and editor settings
 .vs/
+.idea/
+.vscode/
 
 # Gradle cache directory
 .gradle/
@@ -43,6 +45,7 @@ ExportedObj/
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user
@@ -50,8 +53,6 @@ ExportedObj/
 *.pidb
 *.booproj
 *.svd
-*.pdb
-*.mdb
 *.opendb
 *.VC.db
 
@@ -97,3 +98,7 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Local terrain texture source pack
+/[Aa]ssets/TextureHaven/
+/[Aa]ssets/TextureHaven.meta
