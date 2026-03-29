@@ -6,7 +6,10 @@
       "requiredUserType": "Tank",
       "damage": 6,
       "radius": 0.6,
-      "ammunitionCount": -1
+      "attackRange": 10.0,
+      "reloadTime": 1.8,
+      "accuracy": 0.8,
+      "damageReliability": 0.96
     },
     {
       "ammoType": "Tank Shell",
@@ -14,7 +17,10 @@
       "requiredUserType": "Tank",
       "damage": 4,
       "radius": 2.5,
-      "ammunitionCount": -1
+      "attackRange": 10.0,
+      "reloadTime": 1.8,
+      "accuracy": 0.72,
+      "damageReliability": 0.93
     },
     {
       "ammoType": "Rifle Burst",
@@ -22,7 +28,10 @@
       "requiredUserType": "Infantry",
       "damage": 2,
       "radius": 0.4,
-      "ammunitionCount": -1
+      "attackRange": 6.0,
+      "reloadTime": 1.1,
+      "accuracy": 0.78,
+      "damageReliability": 0.99
     },
     {
       "ammoType": "Grenade",
@@ -30,7 +39,10 @@
       "requiredUserType": "Infantry",
       "damage": 3,
       "radius": 1.8,
-      "ammunitionCount": -1
+      "attackRange": 6.0,
+      "reloadTime": 1.1,
+      "accuracy": 0.62,
+      "damageReliability": 0.95
     }
   ]
 }

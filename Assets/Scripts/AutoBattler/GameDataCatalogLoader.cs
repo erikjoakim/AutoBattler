@@ -21,7 +21,7 @@ namespace AutoBattler
             }
 
             var ammoTemplates = ParseAmmoCatalog(ammoAsset.text);
-            var unitTemplates = ParseUnitCatalog(unitAsset.text);
+            var unitTemplates = ParseUnitCatalog(unitAsset.text, ammoTemplates);
             if (ammoTemplates.Count == 0 || unitTemplates.Count == 0)
             {
                 Debug.LogWarning("GameData catalogs were invalid. Using built-in fallback data.");
@@ -57,13 +57,16 @@ namespace AutoBattler
                     JsonDataHelper.GetEnum(item, "requiredUserType", UnitType.Infantry),
                     Mathf.Max(0, JsonDataHelper.GetInt(item, "damage", 0)),
                     Mathf.Max(0f, JsonDataHelper.GetFloat(item, "radius", 0f)),
-                    JsonDataHelper.GetInt(item, "ammunitionCount", -1));
+                    Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "attackRange", 3f)),
+                    Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "reloadTime", 1f)),
+                    Mathf.Clamp01(JsonDataHelper.GetFloat(item, "accuracy", 1f)),
+                    Mathf.Clamp01(JsonDataHelper.GetFloat(item, "damageReliability", 1f)));
             }
 
             return templates;
         }
 
-        private static Dictionary<string, GameUnitTemplate> ParseUnitCatalog(string json)
+        private static Dictionary<string, GameUnitTemplate> ParseUnitCatalog(string json, Dictionary<string, GameAmmoTemplate> ammoTemplates)
         {
             var root = JsonDataHelper.AsObject(MiniJson.Deserialize(json));
             var items = JsonDataHelper.GetArray(root, "units");
@@ -83,30 +86,7 @@ namespace AutoBattler
                     continue;
                 }
 
-                var ammunitionRefs = JsonDataHelper.GetArray(item, "ammunition");
-                var ammoTypes = new List<string>();
-                for (var ammoIndex = 0; ammoIndex < ammunitionRefs.Count; ammoIndex++)
-                {
-                    var ammoRef = ammunitionRefs[ammoIndex];
-                    if (ammoRef is string directAmmoType)
-                    {
-                        ammoTypes.Add(directAmmoType);
-                        continue;
-                    }
-
-                    var ammoObject = JsonDataHelper.AsObject(ammoRef);
-                    if (ammoObject == null)
-                    {
-                        continue;
-                    }
-
-                    var ammoType = JsonDataHelper.GetString(ammoObject, "ammoType", string.Empty);
-                    if (!string.IsNullOrWhiteSpace(ammoType))
-                    {
-                        ammoTypes.Add(ammoType);
-                    }
-                }
-
+                var ammoLoadout = ParseAmmunitionLoadout(item, ammoTemplates);
                 templates[unitTypeKey] = new GameUnitTemplate(
                     unitTypeKey,
                     JsonDataHelper.GetString(item, "unitName", unitTypeKey),
@@ -115,14 +95,93 @@ namespace AutoBattler
                     Mathf.Max(1, JsonDataHelper.GetInt(item, "maxHealth", 1)),
                     Mathf.Max(0, JsonDataHelper.GetInt(item, "armor", 0)),
                     Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "visionRange", 5f)),
-                    Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "attackRange", 3f)),
                     Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "speed", 3f)),
-                    Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "reloadTime", 1f)),
+                    Mathf.Clamp01(JsonDataHelper.GetFloat(item, "accuracy", 1f)),
+                    Mathf.Clamp01(JsonDataHelper.GetFloat(item, "fireReliability", 1f)),
+                    Mathf.Clamp01(JsonDataHelper.GetFloat(item, "moveReliability", 1f)),
                     JsonDataHelper.GetString(item, "navigationAgentType", string.Empty),
-                    ammoTypes.ToArray());
+                    ParseTerrainSpeedProfile(item),
+                    ammoLoadout.ToArray());
             }
 
             return templates;
+        }
+
+        private static List<GameUnitAmmoLoadout> ParseAmmunitionLoadout(Dictionary<string, object> unitObject, Dictionary<string, GameAmmoTemplate> ammoTemplates)
+        {
+            var loadout = new List<GameUnitAmmoLoadout>();
+            var ammunitionRefs = JsonDataHelper.GetArray(unitObject, "ammunition");
+            var rangeOverride = unitObject != null && unitObject.TryGetValue("attackRange", out var rangeValue) ? rangeValue : null;
+            var reloadOverride = unitObject != null && unitObject.TryGetValue("reloadTime", out var reloadValue) ? reloadValue : null;
+
+            for (var ammoIndex = 0; ammoIndex < ammunitionRefs.Count; ammoIndex++)
+            {
+                string ammoType;
+                Dictionary<string, object> ammoObject = null;
+
+                if (ammunitionRefs[ammoIndex] is string directAmmoType)
+                {
+                    ammoType = directAmmoType;
+                }
+                else
+                {
+                    ammoObject = JsonDataHelper.AsObject(ammunitionRefs[ammoIndex]);
+                    if (ammoObject == null)
+                    {
+                        continue;
+                    }
+
+                    ammoType = JsonDataHelper.GetString(ammoObject, "ammoType", string.Empty);
+                }
+
+                if (string.IsNullOrWhiteSpace(ammoType))
+                {
+                    continue;
+                }
+
+                if (!ammoTemplates.TryGetValue(ammoType, out var ammoTemplate))
+                {
+                    Debug.LogWarning("Unknown ammo template in GameUnits catalog: " + ammoType);
+                    continue;
+                }
+
+                var baseAttackRange = JsonDataHelper.GetModifiedFloat(rangeOverride, ammoTemplate.AttackRange);
+                var baseReloadTime = JsonDataHelper.GetModifiedFloat(reloadOverride, ammoTemplate.ReloadTime);
+                var baseAccuracy = ammoTemplate.Accuracy;
+                var baseDamageReliability = ammoTemplate.DamageReliability;
+                var resolvedAttackRange = Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(ammoObject, "attackRange", baseAttackRange));
+                var resolvedReloadTime = Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(ammoObject, "reloadTime", baseReloadTime));
+                var resolvedDefinition = new AmmoDefinition(
+                    JsonDataHelper.GetString(ammoObject, "ammoName", ammoTemplate.AmmoName),
+                    ammoObject != null && ammoObject.ContainsKey("requiredUserType")
+                        ? JsonDataHelper.GetEnum(ammoObject, "requiredUserType", ammoTemplate.RequiredUserType)
+                        : ammoTemplate.RequiredUserType,
+                    Mathf.Max(0, JsonDataHelper.GetModifiedInt(ammoObject, "damage", ammoTemplate.Damage)),
+                    Mathf.Max(0f, JsonDataHelper.GetModifiedFloat(ammoObject, "radius", ammoTemplate.Radius)),
+                    resolvedAttackRange,
+                    resolvedReloadTime,
+                    Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(ammoObject, "accuracy", baseAccuracy)),
+                    Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(ammoObject, "damageReliability", baseDamageReliability)));
+
+                var ammunitionCount = ammoObject == null
+                    ? -1
+                    : ResolveAmmoCount(ammoObject, -1);
+
+                loadout.Add(new GameUnitAmmoLoadout(ammoType, resolvedDefinition, ammunitionCount));
+            }
+
+            return loadout;
+        }
+
+        private static int ResolveAmmoCount(Dictionary<string, object> ammoObject, int baseAmmoCount)
+        {
+            var resolvedCount = JsonDataHelper.GetModifiedInt(ammoObject, "ammunitionCount", baseAmmoCount);
+            return resolvedCount < 0 ? -1 : resolvedCount;
+        }
+
+        private static TerrainSpeedProfile ParseTerrainSpeedProfile(Dictionary<string, object> source)
+        {
+            return TerrainSpeedProfile.Empty.WithOverrides(JsonDataHelper.AsObject(source.TryGetValue("terrainSpeedModifiers", out var value) ? value : null));
         }
     }
 }

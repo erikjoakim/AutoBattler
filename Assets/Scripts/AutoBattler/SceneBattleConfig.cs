@@ -7,6 +7,7 @@ namespace AutoBattler
     public sealed class SceneBattleConfig
     {
         public FormationConfig formation;
+        public TerrainMovementConfig terrainMovement;
         public TeamConfig blueTeam;
         public TeamConfig redTeam;
 
@@ -22,12 +23,18 @@ namespace AutoBattler
                 blueTeam = new TeamConfig { units = Array.Empty<UnitSpawnConfig>() };
             }
 
+            if (terrainMovement == null)
+            {
+                terrainMovement = new TerrainMovementConfig();
+            }
+
             if (redTeam == null)
             {
                 redTeam = new TeamConfig { units = Array.Empty<UnitSpawnConfig>() };
             }
 
             formation.Sanitize();
+            terrainMovement.Sanitize();
         }
 
         public static SceneBattleConfig CreateDefault(GameDataCatalog catalog)
@@ -35,6 +42,7 @@ namespace AutoBattler
             return new SceneBattleConfig
             {
                 formation = new FormationConfig(),
+                terrainMovement = new TerrainMovementConfig(),
                 blueTeam = TeamConfig.CreateDefaultBlue(catalog),
                 redTeam = TeamConfig.CreateDefaultRed(catalog)
             };
@@ -56,6 +64,31 @@ namespace AutoBattler
             forwardSpacing = Mathf.Max(1f, forwardSpacing);
             distanceFromStartPoint = Mathf.Max(0f, distanceFromStartPoint);
         }
+    }
+
+    [Serializable]
+    public sealed class TerrainMovementConfig
+    {
+        public float sampleCellSize = 2f;
+        public string defaultTerrainType = "Grass";
+        public string defaultNavArea = "Walkable";
+        public TerrainLayerMappingConfig[] mappings;
+
+        public void Sanitize()
+        {
+            sampleCellSize = Mathf.Max(0.5f, sampleCellSize);
+            defaultTerrainType = string.IsNullOrWhiteSpace(defaultTerrainType) ? "Grass" : defaultTerrainType;
+            defaultNavArea = string.IsNullOrWhiteSpace(defaultNavArea) ? "Walkable" : defaultNavArea;
+            mappings ??= Array.Empty<TerrainLayerMappingConfig>();
+        }
+    }
+
+    [Serializable]
+    public sealed class TerrainLayerMappingConfig
+    {
+        public string terrainLayer;
+        public string terrainType = "Grass";
+        public string navArea = "Walkable";
     }
 
     [Serializable]
@@ -102,35 +135,37 @@ namespace AutoBattler
                 throw new InvalidOperationException("Unknown unit template: " + templateId);
             }
 
-            var ammunition = BuildDefaultAmmunition(catalog, template);
+            var ammunition = BuildDefaultAmmunition(template, out var ammunitionCounts);
 
             return new UnitSpawnConfig
             {
                 count = Mathf.Max(1, count),
                 mission = template.Mission,
-                definition = template.BuildDefinition(unitName, ammunition)
+                definition = template.BuildDefinition(unitName, ammunition, ammunitionCounts)
             };
         }
 
-        private static AmmoDefinition[] BuildDefaultAmmunition(GameDataCatalog catalog, GameUnitTemplate template)
+        private static AmmoDefinition[] BuildDefaultAmmunition(GameUnitTemplate template, out int[] ammunitionCounts)
         {
-            var ammoTypes = template.GetAmmunitionTypes();
-            var ammunition = new AmmoDefinition[ammoTypes.Length];
+            var loadout = template.GetAmmunitionLoadout();
+            var ammunition = new AmmoDefinition[loadout.Length];
+            ammunitionCounts = new int[loadout.Length];
 
-            for (var i = 0; i < ammoTypes.Length; i++)
+            for (var i = 0; i < loadout.Length; i++)
             {
-                if (!catalog.TryGetAmmoTemplate(ammoTypes[i], out var ammoTemplate))
-                {
-                    ammunition[i] = new AmmoDefinition(ammoTypes[i], template.UnitType, 0, 0f, -1);
-                    continue;
-                }
-
-                ammunition[i] = new AmmoDefinition(
-                    ammoTemplate.AmmoName,
-                    ammoTemplate.RequiredUserType,
-                    ammoTemplate.Damage,
-                    ammoTemplate.Radius,
-                    ammoTemplate.AmmunitionCount);
+                ammunitionCounts[i] = loadout[i].AmmunitionCount;
+                var ammoDefinition = loadout[i].Definition;
+                ammunition[i] = ammoDefinition == null
+                    ? new AmmoDefinition(loadout[i].AmmoType, template.UnitType, 0, 0f, 0.1f, 1f, 1f, 1f)
+                    : new AmmoDefinition(
+                        ammoDefinition.AmmoName,
+                        ammoDefinition.RequiredUserType,
+                        ammoDefinition.Damage,
+                        ammoDefinition.Radius,
+                        ammoDefinition.AttackRange,
+                        ammoDefinition.ReloadTime,
+                        ammoDefinition.Accuracy,
+                        ammoDefinition.DamageReliability);
             }
 
             return ammunition;

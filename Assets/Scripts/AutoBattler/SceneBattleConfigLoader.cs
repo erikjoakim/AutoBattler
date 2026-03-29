@@ -34,6 +34,7 @@ namespace AutoBattler
             var config = new SceneBattleConfig
             {
                 formation = ParseFormation(root),
+                terrainMovement = ParseTerrainMovement(root),
                 blueTeam = ParseTeam(root, "blueTeam", catalog),
                 redTeam = ParseTeam(root, "redTeam", catalog)
             };
@@ -63,6 +64,39 @@ namespace AutoBattler
             formation.forwardSpacing = Mathf.Max(1f, JsonDataHelper.GetFloat(formationObject, "forwardSpacing", formation.forwardSpacing));
             formation.distanceFromStartPoint = Mathf.Max(0f, JsonDataHelper.GetFloat(formationObject, "distanceFromStartPoint", formation.distanceFromStartPoint));
             return formation;
+        }
+
+        private static TerrainMovementConfig ParseTerrainMovement(Dictionary<string, object> root)
+        {
+            var terrainMovement = new TerrainMovementConfig();
+            var mappings = JsonDataHelper.GetArray(root, "terrainMapping");
+            var resolvedMappings = new List<TerrainLayerMappingConfig>();
+
+            for (var i = 0; i < mappings.Count; i++)
+            {
+                var mappingObject = JsonDataHelper.AsObject(mappings[i]);
+                if (mappingObject == null)
+                {
+                    continue;
+                }
+
+                var terrainLayer = JsonDataHelper.GetString(mappingObject, "terrainLayer", string.Empty);
+                if (string.IsNullOrWhiteSpace(terrainLayer))
+                {
+                    continue;
+                }
+
+                resolvedMappings.Add(new TerrainLayerMappingConfig
+                {
+                    terrainLayer = terrainLayer,
+                    terrainType = JsonDataHelper.GetString(mappingObject, "terrainType", terrainMovement.defaultTerrainType),
+                    navArea = JsonDataHelper.GetString(mappingObject, "navArea", terrainMovement.defaultNavArea)
+                });
+            }
+
+            terrainMovement.mappings = resolvedMappings.ToArray();
+            terrainMovement.Sanitize();
+            return terrainMovement;
         }
 
         private static TeamConfig ParseTeam(Dictionary<string, object> root, string key, GameDataCatalog catalog)
@@ -104,17 +138,21 @@ namespace AutoBattler
                 ? JsonDataHelper.GetEnum(source, "mission", template.Mission)
                 : template.Mission;
 
-            var resolvedAmmo = ResolveAmmunition(template, source, catalog);
+            var resolvedAmmo = ResolveAmmunition(template, source, out var resolvedAmmoCounts);
+            var resolvedTerrainSpeedProfile = ResolveTerrainSpeedProfile(template, source);
             var definition = new UnitDefinition(
                 string.IsNullOrWhiteSpace(resolvedName) ? template.UnitName : resolvedName,
                 template.UnitType,
                 Mathf.Max(1, JsonDataHelper.GetModifiedInt(source, "maxHealth", template.MaxHealth)),
                 Mathf.Max(0, JsonDataHelper.GetModifiedInt(source, "armor", template.Armor)),
                 Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(source, "visionRange", template.VisionRange)),
-                Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(source, "attackRange", template.AttackRange)),
                 Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(source, "speed", template.Speed)),
-                Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(source, "reloadTime", template.ReloadTime)),
+                Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(source, "accuracy", template.Accuracy)),
+                Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(source, "fireReliability", template.FireReliability)),
+                Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(source, "moveReliability", template.MoveReliability)),
                 JsonDataHelper.GetString(source, "navigationAgentType", template.NavigationAgentType),
+                resolvedTerrainSpeedProfile,
+                resolvedAmmoCounts,
                 resolvedAmmo);
 
             unitSpawnConfig = new UnitSpawnConfig
@@ -127,30 +165,47 @@ namespace AutoBattler
             return true;
         }
 
-        private static AmmoDefinition[] ResolveAmmunition(GameUnitTemplate template, Dictionary<string, object> source, GameDataCatalog catalog)
+        private static TerrainSpeedProfile ResolveTerrainSpeedProfile(GameUnitTemplate template, Dictionary<string, object> source)
+        {
+            var overrides = JsonDataHelper.AsObject(source.TryGetValue("terrainSpeedModifiers", out var value) ? value : null);
+            return template.TerrainSpeedProfile.WithOverrides(overrides);
+        }
+
+        private static AmmoDefinition[] ResolveAmmunition(GameUnitTemplate template, Dictionary<string, object> source, out int[] resolvedAmmoCounts)
         {
             var ammoOverrideMap = BuildAmmoOverrideMap(source);
-            var ammoTypes = template.GetAmmunitionTypes();
-            var resolvedAmmo = new List<AmmoDefinition>(ammoTypes.Length);
+            var loadout = template.GetAmmunitionLoadout();
+            var resolvedAmmo = new List<AmmoDefinition>(loadout.Length);
+            resolvedAmmoCounts = new int[loadout.Length];
+            var unitAttackRangeOverride = source != null && source.TryGetValue("attackRange", out var attackRangeValue) ? attackRangeValue : null;
+            var unitReloadTimeOverride = source != null && source.TryGetValue("reloadTime", out var reloadTimeValue) ? reloadTimeValue : null;
 
-            for (var i = 0; i < ammoTypes.Length; i++)
+            for (var i = 0; i < loadout.Length; i++)
             {
-                var ammoType = ammoTypes[i];
-                if (!catalog.TryGetAmmoTemplate(ammoType, out var ammoTemplate))
+                var ammoType = loadout[i].AmmoType;
+                ammoOverrideMap.TryGetValue(ammoType, out var ammoOverride);
+                var baseAmmo = loadout[i].Definition;
+                if (baseAmmo == null)
                 {
-                    Debug.LogWarning("Unknown ammo template: " + ammoType + " on unit template " + template.UnitTypeKey);
+                    resolvedAmmoCounts[i] = loadout[i].AmmunitionCount;
+                    resolvedAmmo.Add(new AmmoDefinition(ammoType, template.UnitType, 0, 0f, 0.1f, 1f, 1f, 1f));
                     continue;
                 }
 
-                ammoOverrideMap.TryGetValue(ammoType, out var ammoOverride);
+                var baseAttackRange = JsonDataHelper.GetModifiedFloat(unitAttackRangeOverride, baseAmmo.AttackRange);
+                var baseReloadTime = JsonDataHelper.GetModifiedFloat(unitReloadTimeOverride, baseAmmo.ReloadTime);
+                resolvedAmmoCounts[i] = ResolveAmmoCount(ammoOverride, loadout[i].AmmunitionCount);
                 resolvedAmmo.Add(new AmmoDefinition(
-                    JsonDataHelper.GetString(ammoOverride, "ammoName", ammoTemplate.AmmoName),
+                    JsonDataHelper.GetString(ammoOverride, "ammoName", baseAmmo.AmmoName),
                     ammoOverride != null && ammoOverride.ContainsKey("requiredUserType")
-                        ? JsonDataHelper.GetEnum(ammoOverride, "requiredUserType", ammoTemplate.RequiredUserType)
-                        : ammoTemplate.RequiredUserType,
-                    Mathf.Max(0, JsonDataHelper.GetModifiedInt(ammoOverride, "damage", ammoTemplate.Damage)),
-                    Mathf.Max(0f, JsonDataHelper.GetModifiedFloat(ammoOverride, "radius", ammoTemplate.Radius)),
-                    ResolveAmmoCount(ammoOverride, ammoTemplate.AmmunitionCount)));
+                        ? JsonDataHelper.GetEnum(ammoOverride, "requiredUserType", baseAmmo.RequiredUserType)
+                        : baseAmmo.RequiredUserType,
+                    Mathf.Max(0, JsonDataHelper.GetModifiedInt(ammoOverride, "damage", baseAmmo.Damage)),
+                    Mathf.Max(0f, JsonDataHelper.GetModifiedFloat(ammoOverride, "radius", baseAmmo.Radius)),
+                    Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(ammoOverride, "attackRange", baseAttackRange)),
+                    Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(ammoOverride, "reloadTime", baseReloadTime)),
+                    Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(ammoOverride, "accuracy", baseAmmo.Accuracy)),
+                    Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(ammoOverride, "damageReliability", baseAmmo.DamageReliability))));
             }
 
             return resolvedAmmo.ToArray();

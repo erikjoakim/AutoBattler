@@ -29,34 +29,163 @@ namespace AutoBattler
         {
             var ammoTemplates = new Dictionary<string, GameAmmoTemplate>(StringComparer.OrdinalIgnoreCase)
             {
-                { "Tank Cannon", new GameAmmoTemplate("Tank Cannon", "Tank Cannon", UnitType.Tank, 6, 0.6f, -1) },
-                { "Tank Shell", new GameAmmoTemplate("Tank Shell", "Tank Shell", UnitType.Tank, 4, 2.5f, -1) },
-                { "Rifle Burst", new GameAmmoTemplate("Rifle Burst", "Rifle Burst", UnitType.Infantry, 2, 0.4f, -1) },
-                { "Grenade", new GameAmmoTemplate("Grenade", "Grenade", UnitType.Infantry, 3, 1.8f, -1) }
+                { "Tank Cannon", new GameAmmoTemplate("Tank Cannon", "Tank Cannon", UnitType.Tank, 6, 0.6f, 10f, 1.8f, 0.8f, 0.96f) },
+                { "Tank Shell", new GameAmmoTemplate("Tank Shell", "Tank Shell", UnitType.Tank, 4, 2.5f, 10f, 1.8f, 0.72f, 0.93f) },
+                { "Rifle Burst", new GameAmmoTemplate("Rifle Burst", "Rifle Burst", UnitType.Infantry, 2, 0.4f, 6f, 1.1f, 0.78f, 0.99f) },
+                { "Grenade", new GameAmmoTemplate("Grenade", "Grenade", UnitType.Infantry, 3, 1.8f, 6f, 1.1f, 0.62f, 0.95f) }
             };
 
             var unitTemplates = new Dictionary<string, GameUnitTemplate>(StringComparer.OrdinalIgnoreCase)
             {
-                { "Guard Tank", new GameUnitTemplate("Guard Tank", "Guard Tank", UnitType.Tank, MissionType.Guard, 20, 2, 14f, 10f, 2.2f, 1.8f, string.Empty, new[] { "Tank Cannon", "Tank Shell" }) },
-                { "Assault Tank", new GameUnitTemplate("Assault Tank", "Assault Tank", UnitType.Tank, MissionType.SeekAndDestroy, 20, 2, 14f, 10f, 2.4f, 1.7f, string.Empty, new[] { "Tank Cannon", "Tank Shell" }) },
-                { "Guard Infantry", new GameUnitTemplate("Guard Infantry", "Guard Infantry", UnitType.Infantry, MissionType.Guard, 8, 0, 10f, 6f, 3.4f, 1.1f, string.Empty, new[] { "Rifle Burst", "Grenade" }) },
-                { "Raider Infantry", new GameUnitTemplate("Raider Infantry", "Raider Infantry", UnitType.Infantry, MissionType.SeekAndDestroy, 8, 0, 10f, 6f, 3.8f, 1.0f, string.Empty, new[] { "Rifle Burst", "Grenade" }) }
+                {
+                    "Guard Tank",
+                    new GameUnitTemplate(
+                        "Guard Tank",
+                        "Guard Tank",
+                        UnitType.Tank,
+                        MissionType.Guard,
+                        20,
+                        2,
+                        14f,
+                        2.2f,
+                        0.95f,
+                        0.96f,
+                        0.94f,
+                        string.Empty,
+                        CreateTerrainSpeedProfile(("Road", 1.3f), ("Grass", 1f), ("Mud", 0.65f), ("Rock", 0.75f)),
+                        new[]
+                        {
+                            CreateLoadout(ammoTemplates["Tank Cannon"], -1),
+                            CreateLoadout(ammoTemplates["Tank Shell"], -1)
+                        })
+                },
+                {
+                    "Assault Tank",
+                    new GameUnitTemplate(
+                        "Assault Tank",
+                        "Assault Tank",
+                        UnitType.Tank,
+                        MissionType.SeekAndDestroy,
+                        20,
+                        2,
+                        14f,
+                        2.4f,
+                        1f,
+                        0.98f,
+                        0.9f,
+                        "TankAgent",
+                        CreateTerrainSpeedProfile(("Road", 1.35f), ("Grass", 1f), ("Mud", 0.6f), ("Rock", 0.75f)),
+                        new[]
+                        {
+                            CreateLoadout(ammoTemplates["Tank Cannon"], -1, reloadTime: 1.7f),
+                            CreateLoadout(ammoTemplates["Tank Shell"], -1, reloadTime: 1.7f)
+                        })
+                },
+                {
+                    "Guard Infantry",
+                    new GameUnitTemplate(
+                        "Guard Infantry",
+                        "Guard Infantry",
+                        UnitType.Infantry,
+                        MissionType.Guard,
+                        8,
+                        0,
+                        10f,
+                        3.4f,
+                        0.98f,
+                        0.99f,
+                        0.97f,
+                        string.Empty,
+                        CreateTerrainSpeedProfile(("Road", 1.15f), ("Grass", 1f), ("Mud", 0.85f), ("Rock", 0.95f)),
+                        new[]
+                        {
+                            CreateLoadout(ammoTemplates["Rifle Burst"], -1),
+                            CreateLoadout(ammoTemplates["Grenade"], 3)
+                        })
+                },
+                {
+                    "Raider Infantry",
+                    new GameUnitTemplate(
+                        "Raider Infantry",
+                        "Raider Infantry",
+                        UnitType.Infantry,
+                        MissionType.SeekAndDestroy,
+                        8,
+                        0,
+                        10f,
+                        3.8f,
+                        0.92f,
+                        0.95f,
+                        0.95f,
+                        string.Empty,
+                        CreateTerrainSpeedProfile(("Road", 1.2f), ("Grass", 1f), ("Mud", 0.9f), ("Rock", 1f)),
+                        new[]
+                        {
+                            CreateLoadout(ammoTemplates["Rifle Burst"], -1, reloadTime: 1f),
+                            CreateLoadout(ammoTemplates["Grenade"], 4, reloadTime: 1f)
+                        })
+                }
             };
 
             return new GameDataCatalog(ammoTemplates, unitTemplates);
+        }
+
+        private static GameUnitAmmoLoadout CreateLoadout(
+            GameAmmoTemplate template,
+            int ammunitionCount,
+            float? attackRange = null,
+            float? reloadTime = null,
+            float? accuracy = null,
+            float? damageReliability = null)
+        {
+            return new GameUnitAmmoLoadout(
+                template.AmmoType,
+                new AmmoDefinition(
+                    template.AmmoName,
+                    template.RequiredUserType,
+                    template.Damage,
+                    template.Radius,
+                    attackRange ?? template.AttackRange,
+                    reloadTime ?? template.ReloadTime,
+                    accuracy ?? template.Accuracy,
+                    damageReliability ?? template.DamageReliability),
+                ammunitionCount);
+        }
+
+        private static TerrainSpeedProfile CreateTerrainSpeedProfile(params (string TerrainType, float Modifier)[] entries)
+        {
+            var modifiers = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < entries.Length; i++)
+            {
+                modifiers[entries[i].TerrainType] = entries[i].Modifier;
+            }
+
+            return new TerrainSpeedProfile(modifiers);
         }
     }
 
     public sealed class GameAmmoTemplate
     {
-        public GameAmmoTemplate(string ammoType, string ammoName, UnitType requiredUserType, int damage, float radius, int ammunitionCount)
+        public GameAmmoTemplate(
+            string ammoType,
+            string ammoName,
+            UnitType requiredUserType,
+            int damage,
+            float radius,
+            float attackRange,
+            float reloadTime,
+            float accuracy,
+            float damageReliability)
         {
             AmmoType = ammoType;
             AmmoName = ammoName;
             RequiredUserType = requiredUserType;
             Damage = damage;
             Radius = radius;
-            AmmunitionCount = ammunitionCount;
+            AttackRange = attackRange;
+            ReloadTime = reloadTime;
+            Accuracy = accuracy;
+            DamageReliability = damageReliability;
         }
 
         public string AmmoType { get; }
@@ -64,12 +193,29 @@ namespace AutoBattler
         public UnitType RequiredUserType { get; }
         public int Damage { get; }
         public float Radius { get; }
+        public float AttackRange { get; }
+        public float ReloadTime { get; }
+        public float Accuracy { get; }
+        public float DamageReliability { get; }
+    }
+
+    public readonly struct GameUnitAmmoLoadout
+    {
+        public GameUnitAmmoLoadout(string ammoType, AmmoDefinition definition, int ammunitionCount)
+        {
+            AmmoType = ammoType;
+            Definition = definition;
+            AmmunitionCount = ammunitionCount;
+        }
+
+        public string AmmoType { get; }
+        public AmmoDefinition Definition { get; }
         public int AmmunitionCount { get; }
     }
 
     public sealed class GameUnitTemplate
     {
-        private readonly string[] ammunitionTypes;
+        private readonly GameUnitAmmoLoadout[] ammunitionLoadout;
 
         public GameUnitTemplate(
             string unitTypeKey,
@@ -79,11 +225,13 @@ namespace AutoBattler
             int maxHealth,
             int armor,
             float visionRange,
-            float attackRange,
             float speed,
-            float reloadTime,
+            float accuracy,
+            float fireReliability,
+            float moveReliability,
             string navigationAgentType,
-            string[] ammunitionTypes)
+            TerrainSpeedProfile terrainSpeedProfile,
+            GameUnitAmmoLoadout[] ammunitionLoadout)
         {
             UnitTypeKey = unitTypeKey;
             UnitName = unitName;
@@ -92,11 +240,13 @@ namespace AutoBattler
             MaxHealth = maxHealth;
             Armor = armor;
             VisionRange = visionRange;
-            AttackRange = attackRange;
             Speed = speed;
-            ReloadTime = reloadTime;
+            Accuracy = accuracy;
+            FireReliability = fireReliability;
+            MoveReliability = moveReliability;
             NavigationAgentType = navigationAgentType;
-            this.ammunitionTypes = ammunitionTypes;
+            TerrainSpeedProfile = terrainSpeedProfile ?? TerrainSpeedProfile.Empty;
+            this.ammunitionLoadout = ammunitionLoadout ?? Array.Empty<GameUnitAmmoLoadout>();
         }
 
         public string UnitTypeKey { get; }
@@ -106,12 +256,14 @@ namespace AutoBattler
         public int MaxHealth { get; }
         public int Armor { get; }
         public float VisionRange { get; }
-        public float AttackRange { get; }
         public float Speed { get; }
-        public float ReloadTime { get; }
+        public float Accuracy { get; }
+        public float FireReliability { get; }
+        public float MoveReliability { get; }
         public string NavigationAgentType { get; }
+        public TerrainSpeedProfile TerrainSpeedProfile { get; }
 
-        public UnitDefinition BuildDefinition(string resolvedUnitName, AmmoDefinition[] ammunition)
+        public UnitDefinition BuildDefinition(string resolvedUnitName, AmmoDefinition[] ammunition, int[] ammunitionCounts)
         {
             return new UnitDefinition(
                 string.IsNullOrWhiteSpace(resolvedUnitName) ? UnitName : resolvedUnitName,
@@ -119,16 +271,19 @@ namespace AutoBattler
                 MaxHealth,
                 Armor,
                 VisionRange,
-                AttackRange,
                 Speed,
-                ReloadTime,
+                Accuracy,
+                FireReliability,
+                MoveReliability,
                 NavigationAgentType,
+                TerrainSpeedProfile,
+                ammunitionCounts,
                 ammunition);
         }
 
-        public string[] GetAmmunitionTypes()
+        public GameUnitAmmoLoadout[] GetAmmunitionLoadout()
         {
-            return ammunitionTypes;
+            return ammunitionLoadout;
         }
     }
 }

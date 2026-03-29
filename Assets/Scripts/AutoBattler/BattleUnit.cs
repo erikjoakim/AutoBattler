@@ -10,6 +10,8 @@ namespace AutoBattler
         private int[] ammunitionCounts;
         private int currentHealth;
         private float nextAttackTime;
+        private float nextMoveReliabilityCheckTime;
+        private float movementBreakdownEndTime;
         private Vector3 guardPosition;
         private Vector3 objectivePosition;
         private float groundOffset;
@@ -33,6 +35,9 @@ namespace AutoBattler
             groundOffset = GetGroundOffset();
             ammunitionCounts = CreateAmmoPool(definition);
             isAlive = true;
+            nextAttackTime = 0f;
+            nextMoveReliabilityCheckTime = Time.time + CombatRoller.GetMovementReliabilityCheckInterval(definition.MoveReliability);
+            movementBreakdownEndTime = 0f;
             navigationAgent = GetOrCreateNavigationAgent();
 
             SnapToGround(homePosition);
@@ -99,9 +104,16 @@ namespace AutoBattler
             FaceTowards(target.transform.position);
 
             var distance = GetDistanceTo(target.transform.position);
-            if (distance > unitDefinition.AttackRange)
+            var maxAttackRange = GetMaxAvailableAttackRange();
+            if (maxAttackRange <= 0f)
             {
-                MoveTowards(target.transform.position, Mathf.Max(0.25f, unitDefinition.AttackRange * 0.9f));
+                StopMovement();
+                return;
+            }
+
+            if (distance > maxAttackRange)
+            {
+                MoveTowards(target.transform.position, Mathf.Max(0.25f, maxAttackRange * 0.9f));
                 return;
             }
 
@@ -112,17 +124,30 @@ namespace AutoBattler
                 return;
             }
 
-            if (!TrySelectBestAmmo(target, out var ammoIndex, out var ammo))
+            if (!TrySelectBestAmmo(target, distance, out var ammoIndex, out var ammo))
             {
                 return;
             }
 
-            nextAttackTime = Time.time + unitDefinition.ReloadTime;
+            nextAttackTime = Time.time + ammo.ReloadTime;
             ConsumeAmmo(ammoIndex);
-            BattleUnitRegistry.ApplySplashDamage(Team, target.transform.position, ammo.Damage, ammo.Radius, this);
+
+            if (!CombatRoller.RollProbability(unitDefinition.FireReliability))
+            {
+                return;
+            }
+
+            var finalAccuracy = CombatRoller.CombineProbability(unitDefinition.Accuracy, ammo.Accuracy);
+            var impactPoint = CombatRoller.ResolveImpactPoint(target.transform.position, distance, finalAccuracy);
+            if (!CombatRoller.RollProbability(ammo.DamageReliability))
+            {
+                return;
+            }
+
+            BattleUnitRegistry.ApplySplashDamage(Team, impactPoint, ammo.Damage, ammo.Radius, this);
         }
 
-        private bool TrySelectBestAmmo(BattleUnit target, out int bestAmmoIndex, out AmmoDefinition bestAmmo)
+        private bool TrySelectBestAmmo(BattleUnit target, float distanceToTarget, out int bestAmmoIndex, out AmmoDefinition bestAmmo)
         {
             bestAmmo = null;
             bestAmmoIndex = -1;
@@ -137,7 +162,10 @@ namespace AutoBattler
             for (var i = 0; i < ammunition.Length; i++)
             {
                 var candidate = ammunition[i];
-                if (candidate == null || candidate.RequiredUserType != unitDefinition.UnitType || !HasAmmoRemaining(i))
+                if (candidate == null
+                    || candidate.RequiredUserType != unitDefinition.UnitType
+                    || candidate.AttackRange < distanceToTarget
+                    || !HasAmmoRemaining(i))
                 {
                     continue;
                 }
@@ -155,12 +183,72 @@ namespace AutoBattler
             return bestAmmo != null;
         }
 
+        private float GetMaxAvailableAttackRange()
+        {
+            var ammunition = unitDefinition.Ammunition;
+            if (ammunition == null)
+            {
+                return 0f;
+            }
+
+            var maxRange = 0f;
+            for (var i = 0; i < ammunition.Length; i++)
+            {
+                var ammo = ammunition[i];
+                if (ammo == null || ammo.RequiredUserType != unitDefinition.UnitType || !HasAmmoRemaining(i))
+                {
+                    continue;
+                }
+
+                maxRange = Mathf.Max(maxRange, ammo.AttackRange);
+            }
+
+            return maxRange;
+        }
+
+        private float GetMaxConfiguredAttackRange()
+        {
+            var ammunition = unitDefinition.Ammunition;
+            if (ammunition == null)
+            {
+                return 0f;
+            }
+
+            var maxRange = 0f;
+            for (var i = 0; i < ammunition.Length; i++)
+            {
+                var ammo = ammunition[i];
+                if (ammo == null || ammo.RequiredUserType != unitDefinition.UnitType)
+                {
+                    continue;
+                }
+
+                maxRange = Mathf.Max(maxRange, ammo.AttackRange);
+            }
+
+            return maxRange;
+        }
+
         private void MoveTowards(Vector3 targetPosition, float stoppingDistance = 0f)
         {
+            if (IsMovementBroken())
+            {
+                StopMovement();
+                return;
+            }
+
+            if (ShouldTriggerMovementBreakdown())
+            {
+                StopMovement();
+                return;
+            }
+
             var destination = GetGroundedPosition(targetPosition);
+            var effectiveSpeed = GetEffectiveMoveSpeed();
             if (CanUseNavigation())
             {
-                navigationAgent.speed = unitDefinition.Speed;
+                navigationAgent.speed = effectiveSpeed;
+                navigationAgent.acceleration = Mathf.Max(8f, effectiveSpeed * 4f);
                 navigationAgent.stoppingDistance = Mathf.Max(0f, stoppingDistance);
                 navigationAgent.isStopped = false;
                 navigationAgent.SetDestination(destination);
@@ -171,10 +259,37 @@ namespace AutoBattler
             var nextPosition = Vector3.MoveTowards(
                 transform.position,
                 flatDestination,
-                unitDefinition.Speed * Time.deltaTime);
+                effectiveSpeed * Time.deltaTime);
 
             transform.position = GetGroundedPosition(nextPosition);
             FaceTowards(flatDestination);
+        }
+
+        private bool IsMovementBroken()
+        {
+            return Time.time < movementBreakdownEndTime;
+        }
+
+        private bool ShouldTriggerMovementBreakdown()
+        {
+            if (unitDefinition.MoveReliability >= 0.999f)
+            {
+                return false;
+            }
+
+            if (Time.time < nextMoveReliabilityCheckTime)
+            {
+                return false;
+            }
+
+            nextMoveReliabilityCheckTime = Time.time + CombatRoller.GetMovementReliabilityCheckInterval(unitDefinition.MoveReliability);
+            if (CombatRoller.RollProbability(unitDefinition.MoveReliability))
+            {
+                return false;
+            }
+
+            movementBreakdownEndTime = Time.time + CombatRoller.GetMovementBreakdownDuration(unitDefinition.MoveReliability);
+            return true;
         }
 
         private void ReturnToGuardPosition()
@@ -285,7 +400,22 @@ namespace AutoBattler
             agent.baseOffset = groundOffset;
             agent.radius = GetNavigationRadius();
             agent.height = Mathf.Max(1f, groundOffset * 2f);
+            if (BattleNavigationManager.Instance != null)
+            {
+                BattleNavigationManager.Instance.ConfigureAgent(agent, unitDefinition);
+            }
+
             return agent;
+        }
+
+        private float GetEffectiveMoveSpeed()
+        {
+            if (BattleNavigationManager.Instance == null)
+            {
+                return unitDefinition.Speed;
+            }
+
+            return Mathf.Max(0.1f, unitDefinition.Speed * BattleNavigationManager.Instance.GetSpeedMultiplier(unitDefinition, transform.position));
         }
 
         private float GetNavigationRadius()
@@ -333,19 +463,19 @@ namespace AutoBattler
 
         private static int[] CreateAmmoPool(UnitDefinition definition)
         {
-            var ammunition = definition.Ammunition;
-            if (ammunition == null)
+            var counts = definition.AmmunitionCounts;
+            if (counts == null)
             {
                 return Array.Empty<int>();
             }
 
-            var counts = new int[ammunition.Length];
-            for (var i = 0; i < ammunition.Length; i++)
+            var pool = new int[counts.Length];
+            for (var i = 0; i < counts.Length; i++)
             {
-                counts[i] = ammunition[i] == null ? 0 : ammunition[i].AmmunitionCount;
+                pool[i] = counts[i];
             }
 
-            return counts;
+            return pool;
         }
 
         private bool HasAmmoRemaining(int ammoIndex)
@@ -389,7 +519,7 @@ namespace AutoBattler
             Gizmos.DrawWireSphere(transform.position, unitDefinition.VisionRange);
 
             Gizmos.color = Color.red;
-            Gizmos.DrawWireSphere(transform.position, unitDefinition.AttackRange);
+            Gizmos.DrawWireSphere(transform.position, GetMaxConfiguredAttackRange());
 
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireSphere(objectivePosition, 0.5f);

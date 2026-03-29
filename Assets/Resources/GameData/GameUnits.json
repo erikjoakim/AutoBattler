@@ -8,13 +8,26 @@
       "maxHealth": 20,
       "armor": 2,
       "visionRange": 14.0,
-      "attackRange": 10.0,
       "speed": 2.2,
-      "reloadTime": 1.8,
+      "accuracy": 0.95,
+      "fireReliability": 0.96,
+      "moveReliability": 0.94,
       "navigationAgentType": "",
+      "terrainSpeedModifiers": {
+        "Road": 1.3,
+        "Grass": 1.0,
+        "Mud": 0.65,
+        "Rock": 0.75
+      },
       "ammunition": [
-        "Tank Cannon",
-        "Tank Shell"
+        {
+          "ammoType": "Tank Cannon",
+          "ammunitionCount": -1
+        },
+        {
+          "ammoType": "Tank Shell",
+          "ammunitionCount": -1
+        }
       ]
     },
     {
@@ -25,13 +38,27 @@
       "maxHealth": 20,
       "armor": 2,
       "visionRange": 14.0,
-      "attackRange": 10.0,
       "speed": 2.4,
+      "accuracy": 1.0,
+      "fireReliability": 0.98,
+      "moveReliability": 0.9,
       "reloadTime": 1.7,
       "navigationAgentType": "TankAgent",
+      "terrainSpeedModifiers": {
+        "Road": 3.0,
+        "Grass": 1.0,
+        "Mud": 0.6,
+        "Rock": 0.75
+      },
       "ammunition": [
-        "Tank Cannon",
-        "Tank Shell"
+        {
+          "ammoType": "Tank Cannon",
+          "ammunitionCount": -1
+        },
+        {
+          "ammoType": "Tank Shell",
+          "ammunitionCount": 8
+        }
       ]
     },
     {
@@ -42,13 +69,26 @@
       "maxHealth": 8,
       "armor": 0,
       "visionRange": 10.0,
-      "attackRange": 6.0,
       "speed": 3.4,
-      "reloadTime": 1.1,
+      "accuracy": 0.98,
+      "fireReliability": 0.99,
+      "moveReliability": 0.97,
       "navigationAgentType": "",
+      "terrainSpeedModifiers": {
+        "Road": 1.15,
+        "Grass": 1.0,
+        "Mud": 0.85,
+        "Rock": 0.95
+      },
       "ammunition": [
-        "Rifle Burst",
-        "Grenade"
+        {
+          "ammoType": "Rifle Burst",
+          "ammunitionCount": -1
+        },
+        {
+          "ammoType": "Grenade",
+          "ammunitionCount": 3
+        }
       ]
     },
     {
@@ -59,13 +99,27 @@
       "maxHealth": 8,
       "armor": 0,
       "visionRange": 10.0,
-      "attackRange": 6.0,
       "speed": 3.8,
+      "accuracy": 0.92,
+      "fireReliability": 0.95,
+      "moveReliability": 0.95,
       "reloadTime": 1.0,
       "navigationAgentType": "",
+      "terrainSpeedModifiers": {
+        "Road": 1.2,
+        "Grass": 1.0,
+        "Mud": 0.9,
+        "Rock": 1.0
+      },
       "ammunition": [
-        "Rifle Burst",
-        "Grenade"
+        {
+          "ammoType": "Rifle Burst",
+          "ammunitionCount": -1
+        },
+        {
+          "ammoType": "Grenade",
+          "ammunitionCount": 4
+        }
       ]
     }
   ]

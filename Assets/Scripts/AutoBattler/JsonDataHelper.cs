@@ -61,6 +61,11 @@ namespace AutoBattler
             return (int)Math.Round(ApplyNumericOverride(value, baseValue));
         }
 
+        public static int GetModifiedInt(object value, int baseValue)
+        {
+            return value == null ? baseValue : (int)Math.Round(ApplyNumericOverride(value, baseValue));
+        }
+
         public static float GetModifiedFloat(Dictionary<string, object> source, string key, float baseValue)
         {
             if (source == null || !source.TryGetValue(key, out var value) || value == null)
@@ -69,6 +74,11 @@ namespace AutoBattler
             }
 
             return (float)ApplyNumericOverride(value, baseValue);
+        }
+
+        public static float GetModifiedFloat(object value, float baseValue)
+        {
+            return value == null ? baseValue : (float)ApplyNumericOverride(value, baseValue);
         }
 
         public static T GetEnum<T>(Dictionary<string, object> source, string key, T fallback) where T : struct

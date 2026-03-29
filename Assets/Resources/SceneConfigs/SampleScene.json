@@ -5,6 +5,33 @@
     "forwardSpacing": 4.0,
     "distanceFromStartPoint": 6.0
   },
+  "terrainMapping": [
+    {
+      "terrainLayer": "GrassTL",
+      "terrainType": "Grass",
+      "navArea": "Walkable"
+    },
+    {
+      "terrainLayer": "RoadTL",
+      "terrainType": "Road",
+      "navArea": "RoadArea"
+    },
+    {
+      "terrainLayer": "asphalt_02",
+      "terrainType": "Road",
+      "navArea": "RoadArea"
+    },
+    {
+      "terrainLayer": "brown_mud",
+      "terrainType": "Mud",
+      "navArea": "MudArea"
+    },
+    {
+      "terrainLayer": "rock_ground",
+      "terrainType": "Rock",
+      "navArea": "RockArea"
+    }
+  ],
   "blueTeam": {
     "units": [
       {
@@ -15,7 +42,8 @@
         "unitName": "Fast Tank",
         "unitType": "Guard Tank",
         "speed": "*1.1",
-        "reloadTime": "-0.2"
+        "reloadTime": "-0.2",
+        "accuracy": "*1.03"
       },
       {
         "unitName": "Blue Shellers",
@@ -26,6 +54,8 @@
             "ammoType": "Tank Shell",
             "damage": "+2",
             "radius": "*1.2",
+            "accuracy": "*0.9",
+            "damageReliability": "*0.97",
             "ammunitionCount": 6
           }
         ]
@@ -39,7 +69,11 @@
         "unitName": "Blue Raiders",
         "unitType": "Raider Infantry",
         "count": 4,
-        "speed": "+0.3"
+        "speed": "+0.3",
+        "moveReliability": "*0.96",
+        "terrainSpeedModifiers": {
+          "Road": "*1.1"
+        }
       }
     ]
   },
@@ -52,10 +86,12 @@
       {
         "unitName": "Red Assault Tank",
         "unitType": "Assault Tank",
+        "fireReliability": "*0.95",
         "ammunition": [
           {
             "ammoType": "Tank Cannon",
             "damage": "*1.15",
+            "accuracy": "+0.05",
             "ammunitionCount": 8
           }
         ]
@@ -70,7 +106,11 @@
         "unitName": "Red Raiders",
         "unitType": "Raider Infantry",
         "count": 2,
-        "reloadTime": "*0.9"
+        "reloadTime": "*0.9",
+        "moveReliability": "*0.8",
+        "terrainSpeedModifiers": {
+          "Mud": "*1.15"
+        }
       }
     ]
   }

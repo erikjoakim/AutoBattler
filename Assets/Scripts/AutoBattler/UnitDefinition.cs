@@ -11,11 +11,14 @@ namespace AutoBattler
         [SerializeField] private int maxHealth = 1;
         [SerializeField] private int armor;
         [SerializeField] private float visionRange = 5f;
-        [SerializeField] private float attackRange = 3f;
         [SerializeField] private float speed = 3f;
-        [SerializeField] private float reloadTime = 1f;
+        [SerializeField] private float accuracy = 1f;
+        [SerializeField] private float fireReliability = 1f;
+        [SerializeField] private float moveReliability = 1f;
         [SerializeField] private string navigationAgentType;
         [SerializeField] private AmmoDefinition[] ammunition;
+        [SerializeField] private int[] ammunitionCounts;
+        private readonly TerrainSpeedProfile terrainSpeedProfile;
 
         public UnitDefinition(
             string unitName,
@@ -23,10 +26,13 @@ namespace AutoBattler
             int maxHealth,
             int armor,
             float visionRange,
-            float attackRange,
             float speed,
-            float reloadTime,
+            float accuracy,
+            float fireReliability,
+            float moveReliability,
             string navigationAgentType,
+            TerrainSpeedProfile terrainSpeedProfile,
+            int[] ammunitionCounts,
             params AmmoDefinition[] ammunition)
         {
             this.unitName = unitName;
@@ -34,11 +40,14 @@ namespace AutoBattler
             this.maxHealth = maxHealth;
             this.armor = armor;
             this.visionRange = visionRange;
-            this.attackRange = attackRange;
             this.speed = speed;
-            this.reloadTime = reloadTime;
+            this.accuracy = accuracy;
+            this.fireReliability = fireReliability;
+            this.moveReliability = moveReliability;
             this.navigationAgentType = navigationAgentType;
+            this.terrainSpeedProfile = terrainSpeedProfile ?? TerrainSpeedProfile.Empty;
             this.ammunition = ammunition;
+            this.ammunitionCounts = ammunitionCounts ?? Array.Empty<int>();
         }
 
         public string UnitName => unitName;
@@ -46,10 +55,13 @@ namespace AutoBattler
         public int MaxHealth => maxHealth;
         public int Armor => armor;
         public float VisionRange => visionRange;
-        public float AttackRange => attackRange;
         public float Speed => speed;
-        public float ReloadTime => reloadTime;
+        public float Accuracy => accuracy;
+        public float FireReliability => fireReliability;
+        public float MoveReliability => moveReliability;
         public string NavigationAgentType => navigationAgentType;
         public AmmoDefinition[] Ammunition => ammunition;
+        public int[] AmmunitionCounts => ammunitionCounts;
+        public TerrainSpeedProfile TerrainSpeedProfile => terrainSpeedProfile;
     }
 }
