@@ -39,16 +39,14 @@
         "unitType": "Guard Tank"
       },
       {
-        "unitName": "Fast Tank",
-        "unitType": "Guard Tank",
-        "speed": "*1.1",
-        "reloadTime": "-0.2",
-        "accuracy": "*1.03"
-      },
-      {
         "unitName": "Blue Shellers",
         "unitType": "Assault Tank",
-        "count": 3,
+        "terrainSpeedModifiers": {
+          "Road": 10.0,
+          "Grass": 1.0,
+          "Mud": 0.9,
+          "Rock": 1.0
+        },
         "ammunition": [
           {
             "ammoType": "Tank Shell",
@@ -63,12 +61,12 @@
       {
         "unitName": "Blue Line Infantry",
         "unitType": "Guard Infantry",
-        "count": 4
+        "count": 1
       },
       {
         "unitName": "Blue Raiders",
         "unitType": "Raider Infantry",
-        "count": 4,
+        "count": 1,
         "speed": "+0.3",
         "moveReliability": "*0.96",
         "terrainSpeedModifiers": {

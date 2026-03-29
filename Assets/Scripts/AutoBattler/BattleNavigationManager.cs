@@ -60,10 +60,11 @@ namespace AutoBattler
             }
 
             var bindings = terrainMovementMap.AreaBindings;
+            var fastestModifier = definition.TerrainSpeedProfile.GetMaxModifier();
             for (var i = 0; i < bindings.Count; i++)
             {
                 var binding = bindings[i];
-                agent.SetAreaCost(binding.AreaIndex, ConvertSpeedModifierToAreaCost(definition.TerrainSpeedProfile.GetModifier(binding.TerrainType)));
+                agent.SetAreaCost(binding.AreaIndex, ConvertSpeedModifierToAreaCost(definition.TerrainSpeedProfile.GetModifier(binding.TerrainType), fastestModifier));
             }
         }
 
@@ -201,9 +202,9 @@ namespace AutoBattler
             modifierVolumeRoot = rootObject.transform;
         }
 
-        private static float ConvertSpeedModifierToAreaCost(float speedModifier)
+        private static float ConvertSpeedModifierToAreaCost(float speedModifier, float fastestModifier)
         {
-            return Mathf.Clamp(1f / Mathf.Max(0.05f, speedModifier), 0.1f, 20f);
+            return Mathf.Clamp(Mathf.Max(1f, fastestModifier) / Mathf.Max(0.05f, speedModifier), 1f, 20f);
         }
     }
 }

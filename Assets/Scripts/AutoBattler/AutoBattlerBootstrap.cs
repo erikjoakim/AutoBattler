@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace AutoBattler
@@ -6,6 +7,7 @@ namespace AutoBattler
     {
         private const string BlueStartPointName = "StartPoint1";
         private const string RedStartPointName = "StartPoint2";
+        private const string FallbackLayoutRootName = "FallbackBattleLayout";
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateBootstrap()
@@ -24,16 +26,19 @@ namespace AutoBattler
             EnsureSupportObjects();
             ResetBattleState();
 
-            var anchors = ResolveSceneAnchors();
-            var config = SceneBattleConfigLoader.LoadForActiveScene();
+            var scenario = ResolveScenario();
+            var config = scenario.LoadSceneConfig();
             if (BattleNavigationManager.Instance != null)
             {
                 BattleNavigationManager.Instance.RebuildNavigation(config);
             }
 
-            ConfigureCamera(anchors);
-            SpawnBattlefield(anchors, config);
-            InitializeObjectives(anchors);
+            var layout = ResolveSceneLayout();
+            ValidateSceneLayout(layout, config);
+            scenario.ValidateSceneSetup();
+            ConfigureCamera(layout);
+            SpawnBattlefield(layout, config);
+            InitializeObjectives(layout, scenario);
         }
 
         private void EnsureSupportObjects()
@@ -45,11 +50,17 @@ namespace AutoBattler
                 supportObject.AddComponent<BattleStateManager>();
                 supportObject.AddComponent<BattleObjectiveManager>();
                 supportObject.AddComponent<ScoreHud>();
+                supportObject.AddComponent<UnitInspectorHud>();
                 supportObject.AddComponent<BattleNavigationManager>();
             }
             else if (FindAnyObjectByType<ScoreHud>() == null)
             {
                 ScoreManager.Instance.gameObject.AddComponent<ScoreHud>();
+            }
+
+            if (FindAnyObjectByType<UnitInspectorHud>() == null)
+            {
+                ScoreManager.Instance.gameObject.AddComponent<UnitInspectorHud>();
             }
 
             if (FindAnyObjectByType<BattleStateManager>() == null)
@@ -81,7 +92,7 @@ namespace AutoBattler
             }
         }
 
-        private void SpawnBattlefield(SceneAnchors anchors, SceneBattleConfig config)
+        private void SpawnBattlefield(SceneLayout layout, SceneBattleConfig config)
         {
             var existingRoot = GameObject.Find("UnitsRoot");
             if (existingRoot != null)
@@ -90,12 +101,11 @@ namespace AutoBattler
             }
 
             var unitsRoot = new GameObject("UnitsRoot");
-
-            SpawnTeam(unitsRoot.transform, Team.Blue, anchors.BlueStartPoint.position, anchors.RedStartPoint.position, config.blueTeam, config.formation);
-            SpawnTeam(unitsRoot.transform, Team.Red, anchors.RedStartPoint.position, anchors.BlueStartPoint.position, config.redTeam, config.formation);
+            SpawnTeam(unitsRoot.transform, Team.Blue, layout.BlueStartAreas, layout.GetInitialObjectivePoint(Team.Blue), config.blueTeam, config.formation);
+            SpawnTeam(unitsRoot.transform, Team.Red, layout.RedStartAreas, layout.GetInitialObjectivePoint(Team.Red), config.redTeam, config.formation);
         }
 
-        private void InitializeObjectives(SceneAnchors anchors)
+        private void InitializeObjectives(SceneLayout layout, BattleScenario scenario)
         {
             var objectiveManager = FindAnyObjectByType<BattleObjectiveManager>();
             if (objectiveManager == null)
@@ -103,18 +113,22 @@ namespace AutoBattler
                 return;
             }
 
-            objectiveManager.Initialize(anchors.BlueStartPoint.position, anchors.RedStartPoint.position);
+            objectiveManager.Initialize(layout.BlueStartAreas, layout.RedStartAreas, layout.VictoryPoints);
+            if (scenario != null)
+            {
+                scenario.Initialize(layout.VictoryPoints, layout.EnemySpawners);
+            }
         }
 
-        private void ConfigureCamera(SceneAnchors anchors)
+        private void ConfigureCamera(SceneLayout layout)
         {
             if (Camera.main == null)
             {
                 return;
             }
 
-            var midpoint = (anchors.BlueStartPoint.position + anchors.RedStartPoint.position) * 0.5f;
-            var mapSpan = GetMapSpan(anchors);
+            var midpoint = (layout.BlueCenter + layout.RedCenter) * 0.5f;
+            var mapSpan = GetMapSpan(layout);
             var cameraTransform = Camera.main.transform;
 
             cameraTransform.position = midpoint + new Vector3(0f, mapSpan * 0.9f, -mapSpan * 0.75f);
@@ -124,18 +138,18 @@ namespace AutoBattler
         private void SpawnTeam(
             Transform parent,
             Team team,
-            Vector3 spawnPoint,
+            StartAreaMarker[] startAreas,
             Vector3 targetPoint,
             TeamConfig teamConfig,
             FormationConfig formation)
         {
-            if (teamConfig == null || teamConfig.units == null)
+            if (teamConfig == null || teamConfig.units == null || startAreas == null || startAreas.Length == 0)
             {
                 return;
             }
 
-            var forward = GetPlanarDirection(spawnPoint, targetPoint);
-            var right = new Vector3(forward.z, 0f, -forward.x);
+            var areaUnitTotals = CalculateAreaUnitTotals(startAreas.Length, teamConfig);
+            var areaSpawnCounts = new int[startAreas.Length];
             var spawnedCount = 0;
 
             for (var i = 0; i < teamConfig.units.Length; i++)
@@ -152,53 +166,177 @@ namespace AutoBattler
 
                 for (var unitIndex = 0; unitIndex < count; unitIndex++)
                 {
-                    var worldPosition = spawnPoint + GetFormationOffset(spawnedCount, formation, forward, right);
+                    var areaIndex = spawnedCount % startAreas.Length;
+                    var area = startAreas[areaIndex];
+                    var areaLocalIndex = areaSpawnCounts[areaIndex]++;
+                    var worldPosition = area.GetSpawnPosition(areaLocalIndex, areaUnitTotals[areaIndex], formation);
                     SpawnUnit(parent, definition, team, mission, worldPosition, targetPoint);
                     spawnedCount++;
                 }
             }
         }
 
-        private SceneAnchors ResolveSceneAnchors()
+        private static int[] CalculateAreaUnitTotals(int areaCount, TeamConfig teamConfig)
         {
-            var blueStartPoint = GameObject.Find(BlueStartPointName);
-            var redStartPoint = GameObject.Find(RedStartPointName);
-
-            if (blueStartPoint != null && redStartPoint != null)
+            var totals = new int[Mathf.Max(1, areaCount)];
+            if (teamConfig == null || teamConfig.units == null || areaCount <= 0)
             {
-                return new SceneAnchors(blueStartPoint.transform, redStartPoint.transform);
+                return totals;
             }
 
-            Debug.LogWarning("StartPoint1 and/or StartPoint2 were not found. Falling back to generated anchors.");
-            return CreateFallbackAnchors();
+            var globalIndex = 0;
+            for (var i = 0; i < teamConfig.units.Length; i++)
+            {
+                var unitConfig = teamConfig.units[i];
+                if (unitConfig == null)
+                {
+                    continue;
+                }
+
+                var count = Mathf.Max(1, unitConfig.count);
+                for (var unitIndex = 0; unitIndex < count; unitIndex++)
+                {
+                    totals[globalIndex % areaCount]++;
+                    globalIndex++;
+                }
+            }
+
+            return totals;
         }
 
-        private SceneAnchors CreateFallbackAnchors()
+        private SceneLayout ResolveSceneLayout()
         {
-            var fallbackRoot = GameObject.Find("FallbackBattleAnchors");
+            var startAreas = FindObjectsByType<StartAreaMarker>();
+            var victoryPoints = FindObjectsByType<VictoryPointMarker>();
+            var spawners = FindObjectsByType<EnemySpawnerMarker>();
+            var blueStartAreas = FilterStartAreas(startAreas, Team.Blue);
+            var redStartAreas = FilterStartAreas(startAreas, Team.Red);
+
+            if (blueStartAreas.Length == 0 || redStartAreas.Length == 0)
+            {
+                return CreateFallbackLayout(victoryPoints, spawners, blueStartAreas, redStartAreas);
+            }
+
+            SortByPriority(blueStartAreas);
+            SortByPriority(redStartAreas);
+            return new SceneLayout(blueStartAreas, redStartAreas, victoryPoints, spawners);
+        }
+
+        private SceneLayout CreateFallbackLayout(VictoryPointMarker[] existingVictoryPoints, EnemySpawnerMarker[] enemySpawners, StartAreaMarker[] blueStartAreas, StartAreaMarker[] redStartAreas)
+        {
+            var fallbackRoot = GameObject.Find(FallbackLayoutRootName);
             if (fallbackRoot == null)
             {
-                fallbackRoot = new GameObject("FallbackBattleAnchors");
+                fallbackRoot = new GameObject(FallbackLayoutRootName);
             }
 
-            var blue = GetOrCreateAnchor(fallbackRoot.transform, BlueStartPointName, new Vector3(-20f, 0f, 0f));
-            var red = GetOrCreateAnchor(fallbackRoot.transform, RedStartPointName, new Vector3(20f, 0f, 0f));
+            if (blueStartAreas.Length == 0)
+            {
+                blueStartAreas = new[] { GetOrCreateFallbackArea(fallbackRoot.transform, BlueStartPointName, ResolveLegacyStartPoint(BlueStartPointName, new Vector3(-20f, 0f, 0f)), Team.Blue) };
+                Debug.LogWarning("No player start areas were found. Using a fallback player start area.");
+            }
 
-            return new SceneAnchors(blue, red);
+            if (redStartAreas.Length == 0)
+            {
+                redStartAreas = new[] { GetOrCreateFallbackArea(fallbackRoot.transform, RedStartPointName, ResolveLegacyStartPoint(RedStartPointName, new Vector3(20f, 0f, 0f)), Team.Red) };
+                Debug.LogWarning("No enemy start areas were found. Using a fallback enemy start area.");
+            }
+
+            SortByPriority(blueStartAreas);
+            SortByPriority(redStartAreas);
+            return new SceneLayout(blueStartAreas, redStartAreas, existingVictoryPoints, enemySpawners);
         }
 
-        private static Transform GetOrCreateAnchor(Transform parent, string anchorName, Vector3 position)
+        private static StartAreaMarker[] FilterStartAreas(StartAreaMarker[] areas, Team team)
         {
-            var existingAnchor = parent.Find(anchorName);
-            if (existingAnchor != null)
+            if (areas == null || areas.Length == 0)
             {
-                return existingAnchor;
+                return Array.Empty<StartAreaMarker>();
             }
 
-            var anchorObject = new GameObject(anchorName);
-            anchorObject.transform.SetParent(parent, false);
-            anchorObject.transform.position = position;
-            return anchorObject.transform;
+            var count = 0;
+            for (var i = 0; i < areas.Length; i++)
+            {
+                if (areas[i] != null && areas[i].Team == team)
+                {
+                    count++;
+                }
+            }
+
+            if (count == 0)
+            {
+                return Array.Empty<StartAreaMarker>();
+            }
+
+            var filtered = new StartAreaMarker[count];
+            var index = 0;
+            for (var i = 0; i < areas.Length; i++)
+            {
+                if (areas[i] != null && areas[i].Team == team)
+                {
+                    filtered[index++] = areas[i];
+                }
+            }
+
+            return filtered;
+        }
+
+        private static void SortByPriority(StartAreaMarker[] areas)
+        {
+            Array.Sort(areas, (left, right) =>
+            {
+                if (left == null && right == null)
+                {
+                    return 0;
+                }
+
+                if (left == null)
+                {
+                    return 1;
+                }
+
+                if (right == null)
+                {
+                    return -1;
+                }
+
+                var priorityComparison = left.Priority.CompareTo(right.Priority);
+                return priorityComparison != 0
+                    ? priorityComparison
+                    : string.Compare(left.name, right.name, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        private static StartAreaMarker GetOrCreateFallbackArea(Transform parent, string areaName, Vector3 position, Team team)
+        {
+            var child = parent.Find(areaName);
+            StartAreaMarker marker;
+            if (child == null)
+            {
+                var areaObject = new GameObject(areaName);
+                areaObject.transform.SetParent(parent, false);
+                areaObject.transform.position = position;
+                marker = areaObject.AddComponent<StartAreaMarker>();
+            }
+            else
+            {
+                marker = child.GetComponent<StartAreaMarker>();
+                if (marker == null)
+                {
+                    marker = child.gameObject.AddComponent<StartAreaMarker>();
+                }
+
+                child.position = position;
+            }
+
+            marker.ConfigureRuntimeMarker(team, new Vector3(12f, 2f, 12f));
+            return marker;
+        }
+
+        private static Vector3 ResolveLegacyStartPoint(string objectName, Vector3 fallbackPosition)
+        {
+            var existingPoint = GameObject.Find(objectName);
+            return existingPoint != null ? existingPoint.transform.position : fallbackPosition;
         }
 
         private static void SpawnUnit(
@@ -216,20 +354,36 @@ namespace AutoBattler
             unit.Initialize(definition, team, mission, position, targetPoint);
         }
 
-        private static Vector3 GetFormationOffset(int spawnIndex, FormationConfig formation, Vector3 forward, Vector3 right)
+        private void ValidateSceneLayout(SceneLayout layout, SceneBattleConfig config)
         {
-            var unitsPerRow = Mathf.Max(1, formation.unitsPerRow);
-            var row = spawnIndex / unitsPerRow;
-            var column = spawnIndex % unitsPerRow;
-            var centeredColumn = column - ((unitsPerRow - 1) * 0.5f);
+            if (layout.VictoryPoints.Length == 0)
+            {
+                Debug.LogWarning("No victory points were found in the scene. Battle will fall back to elimination-only victory.");
+            }
 
-            return (right * (centeredColumn * formation.lateralSpacing))
-                - (forward * (formation.distanceFromStartPoint + (row * formation.forwardSpacing)));
+            if ((config.redTeam == null || config.redTeam.units == null || config.redTeam.units.Length == 0) && layout.RedStartAreas.Length == 0)
+            {
+                Debug.LogWarning("No enemy start areas and no configured enemy units were found.");
+            }
         }
 
-        private float GetMapSpan(SceneAnchors anchors)
+        private static BattleScenario ResolveScenario()
         {
-            var anchorDistance = Vector3.Distance(anchors.BlueStartPoint.position, anchors.RedStartPoint.position);
+            var scenario = FindAnyObjectByType<BattleScenario>();
+            if (scenario != null)
+            {
+                return scenario;
+            }
+
+            var scenarioObject = new GameObject("BattleScenario");
+            scenario = scenarioObject.AddComponent<BattleScenario>();
+            scenario.ConfigureRuntimeFallback();
+            return scenario;
+        }
+
+        private float GetMapSpan(SceneLayout layout)
+        {
+            var anchorDistance = Vector3.Distance(layout.BlueCenter, layout.RedCenter);
             var terrain = Terrain.activeTerrain;
             if (terrain == null || terrain.terrainData == null)
             {
@@ -240,28 +394,73 @@ namespace AutoBattler
             return Mathf.Max(anchorDistance * 1.2f, Mathf.Max(terrainSize.x, terrainSize.z) * 0.8f);
         }
 
-        private static Vector3 GetPlanarDirection(Vector3 from, Vector3 to)
+        private readonly struct SceneLayout
         {
-            var direction = to - from;
-            direction.y = 0f;
-            if (direction.sqrMagnitude < 0.001f)
+            public SceneLayout(StartAreaMarker[] blueStartAreas, StartAreaMarker[] redStartAreas, VictoryPointMarker[] victoryPoints, EnemySpawnerMarker[] enemySpawners)
             {
-                return Vector3.forward;
+                BlueStartAreas = blueStartAreas ?? Array.Empty<StartAreaMarker>();
+                RedStartAreas = redStartAreas ?? Array.Empty<StartAreaMarker>();
+                VictoryPoints = victoryPoints ?? Array.Empty<VictoryPointMarker>();
+                EnemySpawners = enemySpawners ?? Array.Empty<EnemySpawnerMarker>();
+                BlueCenter = ComputeCentroid(BlueStartAreas, new Vector3(-20f, 0f, 0f));
+                RedCenter = ComputeCentroid(RedStartAreas, new Vector3(20f, 0f, 0f));
             }
 
-            return direction.normalized;
-        }
+            public StartAreaMarker[] BlueStartAreas { get; }
+            public StartAreaMarker[] RedStartAreas { get; }
+            public VictoryPointMarker[] VictoryPoints { get; }
+            public EnemySpawnerMarker[] EnemySpawners { get; }
+            public Vector3 BlueCenter { get; }
+            public Vector3 RedCenter { get; }
 
-        private readonly struct SceneAnchors
-        {
-            public SceneAnchors(Transform blueStartPoint, Transform redStartPoint)
+            public Vector3 GetInitialObjectivePoint(Team team)
             {
-                BlueStartPoint = blueStartPoint;
-                RedStartPoint = redStartPoint;
+                if (team == Team.Blue)
+                {
+                    for (var i = 0; i < VictoryPoints.Length; i++)
+                    {
+                        if (VictoryPoints[i] != null && VictoryPoints[i].RequiredForVictory)
+                        {
+                            return VictoryPoints[i].Position;
+                        }
+                    }
+
+                    return RedCenter;
+                }
+
+                for (var i = 0; i < VictoryPoints.Length; i++)
+                {
+                    if (VictoryPoints[i] != null && VictoryPoints[i].InitialOwner == ObjectiveOwner.Blue)
+                    {
+                        return VictoryPoints[i].Position;
+                    }
+                }
+
+                return BlueCenter;
             }
 
-            public Transform BlueStartPoint { get; }
-            public Transform RedStartPoint { get; }
+            private static Vector3 ComputeCentroid(StartAreaMarker[] areas, Vector3 fallback)
+            {
+                if (areas == null || areas.Length == 0)
+                {
+                    return fallback;
+                }
+
+                var total = Vector3.zero;
+                var count = 0;
+                for (var i = 0; i < areas.Length; i++)
+                {
+                    if (areas[i] == null)
+                    {
+                        continue;
+                    }
+
+                    total += areas[i].Center;
+                    count++;
+                }
+
+                return count == 0 ? fallback : total / count;
+            }
         }
     }
 }

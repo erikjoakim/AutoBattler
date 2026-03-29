@@ -16,18 +16,25 @@ namespace AutoBattler
 
         public static SceneBattleConfig Load(string sceneName)
         {
-            var catalog = GameDataCatalogLoader.Load();
             var configAsset = Resources.Load<TextAsset>(SceneConfigResourcePath + sceneName);
+            return Load(configAsset, sceneName);
+        }
+
+        public static SceneBattleConfig Load(TextAsset configAsset, string configName = null)
+        {
+            var catalog = GameDataCatalogLoader.Load();
             if (configAsset == null)
             {
-                Debug.LogWarning("No scene config found for " + sceneName + ". Using the built-in fallback config.");
+                var label = string.IsNullOrWhiteSpace(configName) ? "the requested config" : configName;
+                Debug.LogWarning("No scene config found for " + label + ". Using the built-in fallback config.");
                 return SceneBattleConfig.CreateDefault(catalog);
             }
 
             var root = JsonDataHelper.AsObject(MiniJson.Deserialize(configAsset.text));
             if (root == null)
             {
-                Debug.LogWarning("Failed to parse scene config for " + sceneName + ". Using the built-in fallback config.");
+                var label = string.IsNullOrWhiteSpace(configName) ? configAsset.name : configName;
+                Debug.LogWarning("Failed to parse scene config for " + label + ". Using the built-in fallback config.");
                 return SceneBattleConfig.CreateDefault(catalog);
             }
 
@@ -42,7 +49,8 @@ namespace AutoBattler
             config.EnsureDefaults();
             if (CountConfiguredUnits(config) == 0)
             {
-                Debug.LogWarning("Scene config for " + sceneName + " resolved to zero units. Using the built-in fallback config.");
+                var label = string.IsNullOrWhiteSpace(configName) ? configAsset.name : configName;
+                Debug.LogWarning("Scene config for " + label + " resolved to zero units. Using the built-in fallback config.");
                 return SceneBattleConfig.CreateDefault(catalog);
             }
 

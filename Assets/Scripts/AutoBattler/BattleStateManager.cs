@@ -8,6 +8,7 @@ namespace AutoBattler
 
         public bool IsBattleOver { get; private set; }
         public Team? Winner { get; private set; }
+        public string WinnerTitle { get; private set; }
         public string ResultMessage { get; private set; }
 
         private void Awake()
@@ -27,6 +28,7 @@ namespace AutoBattler
         {
             IsBattleOver = false;
             Winner = null;
+            WinnerTitle = string.Empty;
             ResultMessage = string.Empty;
         }
 
@@ -39,6 +41,7 @@ namespace AutoBattler
 
             IsBattleOver = true;
             Winner = winner;
+            WinnerTitle = winner == Team.Blue ? "Blue Wins" : "Red Wins";
             ResultMessage = resultMessage;
         }
     }

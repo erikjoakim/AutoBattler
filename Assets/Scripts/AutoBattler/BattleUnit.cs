@@ -12,6 +12,10 @@ namespace AutoBattler
         private float nextAttackTime;
         private float nextMoveReliabilityCheckTime;
         private float movementBreakdownEndTime;
+        private float nextObjectiveRefreshTime;
+        private Vector3 lastRequestedDestination;
+        private Vector3 objectiveApproachOffset;
+        private bool hasRequestedDestination;
         private Vector3 guardPosition;
         private Vector3 objectivePosition;
         private float groundOffset;
@@ -23,6 +27,12 @@ namespace AutoBattler
         public UnitDefinition Definition => unitDefinition;
         public bool IsAlive => isAlive;
         public int CurrentHealth => currentHealth;
+        public float RemainingReloadTime => Mathf.Max(0f, nextAttackTime - Time.time);
+        public float CurrentMoveSpeed => GetEffectiveMoveSpeed();
+        public float CurrentVelocity => navigationAgent != null ? navigationAgent.velocity.magnitude : 0f;
+        public bool IsMovementTemporarilyBlocked => IsMovementBroken();
+        public string NavigationAgentTypeName => navigationAgent != null ? NavMesh.GetSettingsNameFromID(navigationAgent.agentTypeID) : string.Empty;
+        public string NavigationPathStatus => navigationAgent != null && navigationAgent.hasPath ? navigationAgent.pathStatus.ToString() : "NoPath";
 
         public void Initialize(UnitDefinition definition, Team team, MissionType mission, Vector3 homePosition, Vector3 objective)
         {
@@ -38,6 +48,10 @@ namespace AutoBattler
             nextAttackTime = 0f;
             nextMoveReliabilityCheckTime = Time.time + CombatRoller.GetMovementReliabilityCheckInterval(definition.MoveReliability);
             movementBreakdownEndTime = 0f;
+            nextObjectiveRefreshTime = 0f;
+            lastRequestedDestination = Vector3.zero;
+            objectiveApproachOffset = BuildObjectiveApproachOffset(homePosition, team);
+            hasRequestedDestination = false;
             navigationAgent = GetOrCreateNavigationAgent();
 
             SnapToGround(homePosition);
@@ -53,7 +67,7 @@ namespace AutoBattler
 
             if (BattleStateManager.Instance != null && BattleStateManager.Instance.IsBattleOver)
             {
-                StopMovement();
+                ClearMovement();
                 return;
             }
 
@@ -71,7 +85,7 @@ namespace AutoBattler
                 return;
             }
 
-            MoveTowards(objectivePosition);
+            MoveTowards(ResolveObjectivePosition());
         }
 
         public void ApplyDamage(int incomingDamage, BattleUnit attacker)
@@ -107,7 +121,7 @@ namespace AutoBattler
             var maxAttackRange = GetMaxAvailableAttackRange();
             if (maxAttackRange <= 0f)
             {
-                StopMovement();
+                ClearMovement();
                 return;
             }
 
@@ -117,7 +131,7 @@ namespace AutoBattler
                 return;
             }
 
-            StopMovement();
+            PauseMovement();
 
             if (Time.time < nextAttackTime)
             {
@@ -233,28 +247,36 @@ namespace AutoBattler
         {
             if (IsMovementBroken())
             {
-                StopMovement();
+                ClearMovement();
                 return;
             }
 
             if (ShouldTriggerMovementBreakdown())
             {
-                StopMovement();
+                ClearMovement();
+                return;
+            }
+
+            var effectiveSpeed = GetEffectiveMoveSpeed();
+            if (CanUseNavigation())
+            {
+                var navigationDestination = GetNavigationPosition(targetPosition);
+                navigationAgent.speed = effectiveSpeed;
+                navigationAgent.acceleration = Mathf.Max(8f, effectiveSpeed * 4f);
+                var requestedDestination = CalculateNavigationDestination(navigationDestination, stoppingDistance);
+                if (!TryResolveNavigableDestination(requestedDestination, out var navigableDestination))
+                {
+                    PauseMovement();
+                    return;
+                }
+
+                navigationAgent.stoppingDistance = 0.1f;
+                navigationAgent.isStopped = false;
+                TryUpdateDestination(navigableDestination);
                 return;
             }
 
             var destination = GetGroundedPosition(targetPosition);
-            var effectiveSpeed = GetEffectiveMoveSpeed();
-            if (CanUseNavigation())
-            {
-                navigationAgent.speed = effectiveSpeed;
-                navigationAgent.acceleration = Mathf.Max(8f, effectiveSpeed * 4f);
-                navigationAgent.stoppingDistance = Mathf.Max(0f, stoppingDistance);
-                navigationAgent.isStopped = false;
-                navigationAgent.SetDestination(destination);
-                return;
-            }
-
             var flatDestination = new Vector3(destination.x, transform.position.y, destination.z);
             var nextPosition = Vector3.MoveTowards(
                 transform.position,
@@ -300,7 +322,7 @@ namespace AutoBattler
                 return;
             }
 
-            StopMovement();
+            ClearMovement();
         }
 
         private void FaceTowards(Vector3 targetPosition)
@@ -330,7 +352,7 @@ namespace AutoBattler
             }
 
             isAlive = false;
-            StopMovement();
+            ClearMovement();
             BattleUnitRegistry.Unregister(this);
 
             if (attacker != null && ScoreManager.Instance != null)
@@ -343,22 +365,29 @@ namespace AutoBattler
 
         private void SnapToGround(Vector3 preferredPosition)
         {
-            var groundedPosition = GetGroundedPosition(preferredPosition);
-            if (TryWarpToNavigation(groundedPosition))
+            var navigationPosition = GetNavigationPosition(preferredPosition);
+            if (TryWarpToNavigation(navigationPosition))
             {
                 return;
             }
 
-            transform.position = groundedPosition;
+            transform.position = GetGroundedPosition(preferredPosition);
         }
 
         private Vector3 GetGroundedPosition(Vector3 position)
+        {
+            var groundedPosition = GetNavigationPosition(position);
+            groundedPosition.y += groundOffset;
+            return groundedPosition;
+        }
+
+        private Vector3 GetNavigationPosition(Vector3 position)
         {
             var groundedPosition = position;
             var terrain = Terrain.activeTerrain;
             if (terrain == null || terrain.terrainData == null)
             {
-                groundedPosition.y = groundOffset;
+                groundedPosition.y = 0f;
                 return groundedPosition;
             }
 
@@ -369,11 +398,11 @@ namespace AutoBattler
 
             if (localX >= 0f && localX <= terrainSize.x && localZ >= 0f && localZ <= terrainSize.z)
             {
-                groundedPosition.y = terrain.SampleHeight(groundedPosition) + terrainOrigin.y + groundOffset;
+                groundedPosition.y = terrain.SampleHeight(groundedPosition) + terrainOrigin.y;
                 return groundedPosition;
             }
 
-            groundedPosition.y = groundOffset;
+            groundedPosition.y = 0f;
             return groundedPosition;
         }
 
@@ -395,8 +424,12 @@ namespace AutoBattler
             agent.speed = unitDefinition.Speed;
             agent.acceleration = Mathf.Max(8f, unitDefinition.Speed * 4f);
             agent.angularSpeed = 720f;
-            agent.autoBraking = true;
+            agent.autoBraking = false;
             agent.updateRotation = true;
+            agent.obstacleAvoidanceType = unitDefinition.UnitType == UnitType.Infantry
+                ? ObstacleAvoidanceType.LowQualityObstacleAvoidance
+                : ObstacleAvoidanceType.MedQualityObstacleAvoidance;
+            agent.avoidancePriority = Mathf.Clamp(50 + GetAvoidancePriorityOffset(guardPosition, Team), 20, 80);
             agent.baseOffset = groundOffset;
             agent.radius = GetNavigationRadius();
             agent.height = Mathf.Max(1f, groundOffset * 2f);
@@ -437,12 +470,12 @@ namespace AutoBattler
                 return false;
             }
 
-            if (!NavMesh.SamplePosition(preferredPosition, out var hit, 8f, NavMesh.AllAreas))
+            if (!TryResolveNavigableDestination(preferredPosition, out var hitPosition))
             {
                 return false;
             }
 
-            return navigationAgent.Warp(hit.position);
+            return navigationAgent.Warp(hitPosition);
         }
 
         private bool CanUseNavigation()
@@ -450,7 +483,17 @@ namespace AutoBattler
             return navigationAgent != null && navigationAgent.isActiveAndEnabled && navigationAgent.isOnNavMesh;
         }
 
-        private void StopMovement()
+        private void PauseMovement()
+        {
+            if (!CanUseNavigation())
+            {
+                return;
+            }
+
+            navigationAgent.isStopped = true;
+        }
+
+        private void ClearMovement()
         {
             if (!CanUseNavigation())
             {
@@ -459,6 +502,63 @@ namespace AutoBattler
 
             navigationAgent.isStopped = true;
             navigationAgent.ResetPath();
+            hasRequestedDestination = false;
+        }
+
+        private Vector3 CalculateNavigationDestination(Vector3 rawDestination, float stoppingDistance)
+        {
+            if (stoppingDistance <= 0.1f)
+            {
+                return rawDestination;
+            }
+
+            var offset = rawDestination - transform.position;
+            offset.y = 0f;
+            var distance = offset.magnitude;
+            if (distance <= stoppingDistance)
+            {
+                return transform.position;
+            }
+
+            return rawDestination - (offset.normalized * stoppingDistance);
+        }
+
+        private void TryUpdateDestination(Vector3 destination)
+        {
+            if (!CanUseNavigation())
+            {
+                return;
+            }
+
+            var destinationChanged = !hasRequestedDestination || Vector3.SqrMagnitude(lastRequestedDestination - destination) >= 0.25f;
+            var needsRecovery = !navigationAgent.hasPath || navigationAgent.pathStatus != NavMeshPathStatus.PathComplete;
+            if (!destinationChanged && !needsRecovery)
+            {
+                return;
+            }
+
+            navigationAgent.SetDestination(destination);
+            lastRequestedDestination = destination;
+            hasRequestedDestination = true;
+        }
+
+        private bool TryResolveNavigableDestination(Vector3 preferredPosition, out Vector3 navigablePosition)
+        {
+            navigablePosition = preferredPosition;
+            if (navigationAgent == null)
+            {
+                return false;
+            }
+
+            var maxDistance = Mathf.Max(4f, navigationAgent.radius * 6f);
+            var areaMask = NavMesh.AllAreas;
+            if (NavMesh.SamplePosition(preferredPosition, out var hit, maxDistance, areaMask))
+            {
+                navigablePosition = hit.position;
+                return true;
+            }
+
+            return false;
         }
 
         private static int[] CreateAmmoPool(UnitDefinition definition)
@@ -503,6 +603,16 @@ namespace AutoBattler
             ammunitionCounts[ammoIndex] = Mathf.Max(0, ammunitionCounts[ammoIndex] - 1);
         }
 
+        public int GetAmmoRemaining(int ammoIndex)
+        {
+            if (ammunitionCounts == null || ammoIndex < 0 || ammoIndex >= ammunitionCounts.Length)
+            {
+                return 0;
+            }
+
+            return ammunitionCounts[ammoIndex];
+        }
+
         private void OnDestroy()
         {
             BattleUnitRegistry.Unregister(this);
@@ -522,7 +632,39 @@ namespace AutoBattler
             Gizmos.DrawWireSphere(transform.position, GetMaxConfiguredAttackRange());
 
             Gizmos.color = Color.cyan;
-            Gizmos.DrawWireSphere(objectivePosition, 0.5f);
+            Gizmos.DrawWireSphere(ResolveObjectivePosition(), 0.5f);
+        }
+
+        private Vector3 ResolveObjectivePosition()
+        {
+            if (BattleObjectiveManager.Instance == null)
+            {
+                return objectivePosition;
+            }
+
+            if (Time.time >= nextObjectiveRefreshTime || GetDistanceTo(objectivePosition) <= 2f)
+            {
+                objectivePosition = BattleObjectiveManager.Instance.GetObjectiveDestination(Team, transform.position, objectivePosition) + objectiveApproachOffset;
+                nextObjectiveRefreshTime = Time.time + 0.75f;
+            }
+
+            return objectivePosition;
+        }
+
+        private Vector3 BuildObjectiveApproachOffset(Vector3 referencePosition, Team team)
+        {
+            var magnitude = unitDefinition != null && unitDefinition.UnitType == UnitType.Infantry ? 0.35f : 0.2f;
+            var seed = Mathf.Abs((referencePosition.x * 0.173f) + (referencePosition.z * 0.619f) + ((int)team * 0.271f));
+            var raw = seed - Mathf.Floor(seed);
+            var angle = raw * Mathf.PI * 2f;
+            return new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * magnitude;
+        }
+
+        private int GetAvoidancePriorityOffset(Vector3 referencePosition, Team team)
+        {
+            var seed = Mathf.Abs((referencePosition.x * 11.3f) + (referencePosition.z * 7.7f) + ((int)team * 3.1f));
+            var raw = Mathf.FloorToInt((seed - Mathf.Floor(seed)) * 31f);
+            return raw - 15;
         }
     }
 }

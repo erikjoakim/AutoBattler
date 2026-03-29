@@ -45,7 +45,7 @@
       "reloadTime": 1.7,
       "navigationAgentType": "TankAgent",
       "terrainSpeedModifiers": {
-        "Road": 3.0,
+        "Road": 1.35,
         "Grass": 1.0,
         "Mud": 0.6,
         "Rock": 0.75

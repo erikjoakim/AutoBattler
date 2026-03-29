@@ -17,4 +17,11 @@ namespace AutoBattler
         Guard,
         SeekAndDestroy
     }
+
+    public enum ObjectiveOwner
+    {
+        Neutral,
+        Blue,
+        Red
+    }
 }
