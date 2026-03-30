@@ -1,10 +1,23 @@
-{
+   {
   "unitCards": [
     {
       "unitCardDefinitionId": "guard_infantry_card",
       "displayName": "Guard Infantry",
       "baseTemplateId": "Guard Infantry",
       "purchaseCostGold": 10
+    },
+    {
+      "unitCardDefinitionId": "assault_tank_card",
+      "displayName": "Assault Tank",
+      "baseTemplateId": "Assault Tank",
+      "purchaseCostGold": 10
+    },
+    {
+      "unitCardDefinitionId": "raider_infantry_card",
+      "displayName": "Raider Infantry",
+      "baseTemplateId": "Raider Infantry",
+      "purchaseCostGold": 10
     }
   ]
 }
+ 

@@ -1,0 +1,53 @@
+{
+  "lootTables": [
+    {
+      "lootTableId": "sample_operation_victory",
+      "guaranteedMaxCount": 1,
+      "entries": [
+        {
+          "lootItemId": "gold_medium",
+          "guaranteed": true
+        },
+        {
+          "lootItemId": "currency_scrap_parts_x2",
+          "dropChance": 0.75
+        },
+        {
+          "lootItemId": "item_field_plating",
+          "dropChance": 0.3
+        },
+        {
+          "lootItemId": "map_sample_operation",
+          "dropChance": 0.2
+        }
+      ]
+    },
+    {
+      "lootTableId": "enemy_unit_basic",
+      "entries": [
+        {
+          "lootItemId": "gold_small",
+          "dropChance": 0.22
+        },
+        {
+          "lootItemId": "currency_scrap_parts_x2",
+          "dropChance": 0.1
+        }
+      ]
+    },
+    {
+      "lootTableId": "enemy_elite_tank",
+      "guaranteedMaxCount": 1,
+      "entries": [
+        {
+          "lootItemId": "gold_small",
+          "guaranteed": true
+        },
+        {
+          "lootItemId": "item_field_plating",
+          "dropChance": 0.25
+        }
+      ]
+    }
+  ]
+}

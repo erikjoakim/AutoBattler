@@ -27,6 +27,7 @@ namespace AutoBattler
         public string sceneName;
         public string description;
         public int tier = 1;
+        public string baseLootTableId;
     }
 
     [Serializable]
@@ -48,6 +49,31 @@ namespace AutoBattler
     public sealed class UnitCardDefinitionCatalog
     {
         public List<UnitCardDefinition> unitCards = new List<UnitCardDefinition>();
+    }
+
+    [Serializable]
+    public sealed class StartingMapEntry
+    {
+        public string mapDefinitionId;
+        public int count = 1;
+        public string instanceNamePrefix;
+    }
+
+    [Serializable]
+    public sealed class StartingUnitCardEntry
+    {
+        public string unitCardDefinitionId;
+        public int count = 1;
+        public string displayNamePrefix;
+    }
+
+    [Serializable]
+    public sealed class StartingLoadoutDefinition
+    {
+        public int startingExperience;
+        public int startingGold = 50;
+        public List<StartingMapEntry> startingMaps = new List<StartingMapEntry>();
+        public List<StartingUnitCardEntry> startingUnitCards = new List<StartingUnitCardEntry>();
     }
 
     [Serializable]
@@ -86,11 +112,13 @@ namespace AutoBattler
     [Serializable]
     public sealed class CampaignSaveData
     {
-        public int saveVersion = 1;
+        public int saveVersion = 2;
         public int playerExperience;
         public int gold = 50;
+        public List<CurrencyItemStack> currencyItemStacks = new List<CurrencyItemStack>();
         public List<OwnedMapItem> ownedMapItems = new List<OwnedMapItem>();
         public List<OwnedUnitCard> ownedUnitCards = new List<OwnedUnitCard>();
+        public List<OwnedUnitItem> ownedUnitItems = new List<OwnedUnitItem>();
         public List<HexSlotSaveData> hexBoardState = new List<HexSlotSaveData>();
         public BattleResultData lastResolvedBattleResult;
     }
@@ -115,6 +143,8 @@ namespace AutoBattler
         public string resultMessage;
         public List<string> deadUnitCardIds = new List<string>();
         public List<string> survivingUnitCardIds = new List<string>();
+        public List<DroppedLootEntry> claimedLoot = new List<DroppedLootEntry>();
+        public List<DroppedLootEntry> lostLoot = new List<DroppedLootEntry>();
     }
 
     public sealed class CampaignHexSlotDefinition

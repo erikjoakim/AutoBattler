@@ -128,6 +128,7 @@ namespace AutoBattler
         public MissionType mission;
         public UnitDefinition definition;
         public string ownedUnitCardId;
+        public string lootTableId;
 
         public static UnitSpawnConfig FromTemplate(GameDataCatalog catalog, string templateId, string unitName, int count = 1)
         {

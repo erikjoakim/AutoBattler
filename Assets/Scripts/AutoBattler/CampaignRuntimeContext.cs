@@ -23,6 +23,7 @@ namespace AutoBattler
         private PreparedMissionData activeMission;
         private BattleResultData pendingBattleResult;
         private bool awaitingMissionSceneLoad;
+        private bool headQuarterStartupApplied;
 
         public CampaignCatalogs Catalogs => catalogs;
         public CampaignSaveData SaveData => saveData;
@@ -322,6 +323,26 @@ namespace AutoBattler
             pendingBattleResult = result;
         }
 
+        public void ApplyHeadQuarterStartupSettings(bool loadExistingSaveFile)
+        {
+            if (headQuarterStartupApplied)
+            {
+                return;
+            }
+
+            headQuarterStartupApplied = true;
+            if (loadExistingSaveFile)
+            {
+                return;
+            }
+
+            saveData = CreateDefaultSave();
+            activeMission = null;
+            pendingBattleResult = null;
+            awaitingMissionSceneLoad = false;
+            Save();
+        }
+
         public void FinalizePendingBattleResult()
         {
             if (pendingBattleResult == null || activeMission == null)
@@ -372,6 +393,7 @@ namespace AutoBattler
                 }
             }
 
+            ApplyClaimedLoot(pendingBattleResult.claimedLoot);
             saveData.lastResolvedBattleResult = pendingBattleResult;
             pendingBattleResult = null;
             activeMission = null;
@@ -528,6 +550,10 @@ namespace AutoBattler
         private CampaignSaveData CreateDefaultSave()
         {
             var created = new CampaignSaveData();
+            var startingLoadout = catalogs?.StartingLoadout ?? new StartingLoadoutDefinition();
+            created.playerExperience = Mathf.Max(0, startingLoadout.startingExperience);
+            created.gold = Mathf.Max(0, startingLoadout.startingGold);
+
             for (var i = 0; i < CampaignBoardLayout.DefaultSlots.Length; i++)
             {
                 var definition = CampaignBoardLayout.DefaultSlots[i];
@@ -538,41 +564,232 @@ namespace AutoBattler
                 });
             }
 
-            created.ownedMapItems.Add(new OwnedMapItem
+            var mapItemSequence = 1;
+            for (var i = 0; i < startingLoadout.startingMaps.Count; i++)
             {
-                mapItemId = "map_item_001",
-                mapDefinitionId = "sample_operation",
-                instanceName = "Sample Operation I"
-            });
-            created.ownedMapItems.Add(new OwnedMapItem
-            {
-                mapItemId = "map_item_002",
-                mapDefinitionId = "sample_operation",
-                instanceName = "Sample Operation II"
-            });
-            created.ownedMapItems.Add(new OwnedMapItem
-            {
-                mapItemId = "map_item_003",
-                mapDefinitionId = "sample_operation",
-                instanceName = "Sample Operation III"
-            });
+                var entry = startingLoadout.startingMaps[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.mapDefinitionId))
+                {
+                    continue;
+                }
 
-            created.ownedUnitCards.Add(new OwnedUnitCard
+                var prefix = ResolveMapInstanceNamePrefix(entry);
+                for (var count = 0; count < Mathf.Max(1, entry.count); count++)
+                {
+                    created.ownedMapItems.Add(new OwnedMapItem
+                    {
+                        mapItemId = "map_item_" + mapItemSequence.ToString("D3"),
+                        mapDefinitionId = entry.mapDefinitionId,
+                        instanceName = prefix + " " + ToRomanNumeral(count + 1)
+                    });
+                    mapItemSequence++;
+                }
+            }
+
+            var unitCardSequence = 1;
+            for (var i = 0; i < startingLoadout.startingUnitCards.Count; i++)
             {
-                unitCardId = "unit_card_001",
-                definitionId = "guard_infantry_card",
-                displayName = "Rook-1",
-                baseTemplateId = "Guard Infantry",
-                status = UnitCardStatus.Available
-            });
+                var entry = startingLoadout.startingUnitCards[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.unitCardDefinitionId))
+                {
+                    continue;
+                }
+
+                if (!catalogs.TryGetUnitCardDefinition(entry.unitCardDefinitionId, out var definition))
+                {
+                    Debug.LogWarning("Unknown starting unit card definition: " + entry.unitCardDefinitionId);
+                    continue;
+                }
+
+                var prefix = ResolveUnitCardNamePrefix(entry, definition);
+                for (var count = 0; count < Mathf.Max(1, entry.count); count++)
+                {
+                    created.ownedUnitCards.Add(new OwnedUnitCard
+                    {
+                        unitCardId = "unit_card_" + unitCardSequence.ToString("D3"),
+                        definitionId = definition.unitCardDefinitionId,
+                        displayName = prefix + "-" + (count + 1),
+                        baseTemplateId = definition.baseTemplateId,
+                        status = UnitCardStatus.Available
+                    });
+                    unitCardSequence++;
+                }
+            }
 
             return created;
         }
 
+        private string ResolveMapInstanceNamePrefix(StartingMapEntry entry)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.instanceNamePrefix))
+            {
+                return entry.instanceNamePrefix;
+            }
+
+            if (catalogs != null && catalogs.TryGetMapDefinition(entry.mapDefinitionId, out var definition))
+            {
+                return string.IsNullOrWhiteSpace(definition.displayName) ? entry.mapDefinitionId : definition.displayName;
+            }
+
+            return entry.mapDefinitionId;
+        }
+
+        private static string ResolveUnitCardNamePrefix(StartingUnitCardEntry entry, UnitCardDefinition definition)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.displayNamePrefix))
+            {
+                return entry.displayNamePrefix;
+            }
+
+            return string.IsNullOrWhiteSpace(definition.displayName) ? definition.unitCardDefinitionId : definition.displayName;
+        }
+
+        private void ApplyClaimedLoot(List<DroppedLootEntry> claimedLoot)
+        {
+            if (claimedLoot == null || claimedLoot.Count == 0)
+            {
+                return;
+            }
+
+            for (var i = 0; i < claimedLoot.Count; i++)
+            {
+                var entry = claimedLoot[i];
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                switch (entry.rewardType)
+                {
+                    case LootRewardType.Gold:
+                        saveData.gold += Mathf.Max(0, entry.amount);
+                        break;
+
+                    case LootRewardType.MapItem:
+                        AddOwnedMapItem(entry);
+                        break;
+
+                    case LootRewardType.UnitItem:
+                        AddOwnedUnitItem(entry);
+                        break;
+
+                    case LootRewardType.CurrencyItem:
+                        AddCurrencyItemStack(entry);
+                        break;
+                }
+            }
+        }
+
+        private void AddOwnedMapItem(DroppedLootEntry entry)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(entry.mapDefinitionId))
+            {
+                return;
+            }
+
+            var instanceName = entry.displayName;
+            if (catalogs != null && catalogs.TryGetMapDefinition(entry.mapDefinitionId, out var definition))
+            {
+                instanceName = string.IsNullOrWhiteSpace(definition.displayName) ? entry.mapDefinitionId : definition.displayName;
+            }
+
+            for (var count = 0; count < Mathf.Max(1, entry.amount); count++)
+            {
+                saveData.ownedMapItems.Add(new OwnedMapItem
+                {
+                    mapItemId = "map_item_" + Guid.NewGuid().ToString("N"),
+                    mapDefinitionId = entry.mapDefinitionId,
+                    instanceName = instanceName
+                });
+            }
+        }
+
+        private void AddOwnedUnitItem(DroppedLootEntry entry)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(entry.itemDefinitionId))
+            {
+                return;
+            }
+
+            for (var count = 0; count < Mathf.Max(1, entry.amount); count++)
+            {
+                saveData.ownedUnitItems.Add(new OwnedUnitItem
+                {
+                    itemInstanceId = "item_" + Guid.NewGuid().ToString("N"),
+                    itemDefinitionId = entry.itemDefinitionId,
+                    equippedToUnitCardId = string.Empty
+                });
+            }
+        }
+
+        private void AddCurrencyItemStack(DroppedLootEntry entry)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(entry.currencyItemDefinitionId))
+            {
+                return;
+            }
+
+            for (var i = 0; i < saveData.currencyItemStacks.Count; i++)
+            {
+                var stack = saveData.currencyItemStacks[i];
+                if (stack != null && string.Equals(stack.currencyItemDefinitionId, entry.currencyItemDefinitionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    stack.amount += Mathf.Max(1, entry.amount);
+                    return;
+                }
+            }
+
+            saveData.currencyItemStacks.Add(new CurrencyItemStack
+            {
+                currencyItemDefinitionId = entry.currencyItemDefinitionId,
+                amount = Mathf.Max(1, entry.amount)
+            });
+        }
+
+        private static string ToRomanNumeral(int value)
+        {
+            if (value <= 0)
+            {
+                return value.ToString();
+            }
+
+            var numerals = new (int value, string numeral)[]
+            {
+                (1000, "M"),
+                (900, "CM"),
+                (500, "D"),
+                (400, "CD"),
+                (100, "C"),
+                (90, "XC"),
+                (50, "L"),
+                (40, "XL"),
+                (10, "X"),
+                (9, "IX"),
+                (5, "V"),
+                (4, "IV"),
+                (1, "I")
+            };
+
+            var remainder = value;
+            var result = string.Empty;
+            for (var i = 0; i < numerals.Length; i++)
+            {
+                while (remainder >= numerals[i].value)
+                {
+                    result += numerals[i].numeral;
+                    remainder -= numerals[i].value;
+                }
+            }
+
+            return result;
+        }
+
         private void EnsureSaveDefaults(CampaignSaveData data)
         {
+            data.currencyItemStacks ??= new List<CurrencyItemStack>();
             data.ownedMapItems ??= new List<OwnedMapItem>();
             data.ownedUnitCards ??= new List<OwnedUnitCard>();
+            data.ownedUnitItems ??= new List<OwnedUnitItem>();
             data.hexBoardState ??= new List<HexSlotSaveData>();
             for (var i = 0; i < CampaignBoardLayout.DefaultSlots.Length; i++)
             {

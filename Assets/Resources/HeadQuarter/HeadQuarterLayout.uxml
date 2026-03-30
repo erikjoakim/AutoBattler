@@ -1,0 +1,42 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="Root" class="hq-root">
+        <ui:VisualElement name="TopBar" class="top-bar">
+            <ui:Label name="TopBarLabel" text="HEADQUARTER" class="top-bar-label" />
+        </ui:VisualElement>
+        <ui:VisualElement name="MainBody" class="main-body">
+            <ui:VisualElement name="LeftPanel" class="panel left-panel">
+                <ui:Label text="Available Maps" class="panel-title" />
+                <ui:VisualElement name="MapInventoryList" class="list-container" />
+            </ui:VisualElement>
+            <ui:VisualElement name="CenterPanel" class="panel center-panel">
+                <ui:Label text="Operations Grid" class="panel-title" />
+                <ui:VisualElement name="BoardContainer" class="board-container" />
+            </ui:VisualElement>
+            <ui:VisualElement name="RightPanel" class="panel right-panel">
+                <ui:Label text="Map Briefing" class="panel-title" />
+                <ui:Label name="MapDetails" class="details-label" />
+                <ui:VisualElement name="MissionButtons" class="button-row">
+                    <ui:Button name="OpenMapButton" text="Open Map" class="action-button primary-button" />
+                    <ui:Button name="ClearHexButton" text="Clear Hex" class="action-button secondary-button action-button-last" />
+                </ui:VisualElement>
+                <ui:VisualElement name="SelectedCardsPanel" class="sub-panel">
+                    <ui:Label text="Selected For This Map" class="sub-panel-title" />
+                    <ui:VisualElement name="SelectedCardsList" class="list-container" />
+                </ui:VisualElement>
+                <ui:VisualElement name="AvailableCardsPanel" class="sub-panel">
+                    <ui:Label text="Available Troop Cards" class="sub-panel-title" />
+                    <ui:VisualElement name="AvailableCardsList" class="list-container" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="StatusBar" class="status-bar">
+            <ui:Label name="StatusLabel" class="status-label" />
+        </ui:VisualElement>
+        <ui:VisualElement name="ResultOverlay" class="result-overlay">
+            <ui:VisualElement name="ResultCard" class="result-card">
+                <ui:Label name="ResultLabel" class="result-label" />
+                <ui:Button name="ResultConfirmButton" text="Confirm" class="action-button primary-button result-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

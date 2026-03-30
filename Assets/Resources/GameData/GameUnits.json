@@ -117,7 +117,7 @@
       "maxHealth": 8,
       "armor": 0,
       "visionRange": 10.0,
-      "speed": 3.8,
+      "speed": 5,
       "accuracy": 0.92,
       "fireReliability": 0.95,
       "moveReliability": 0.95,

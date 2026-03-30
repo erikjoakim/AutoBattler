@@ -1,0 +1,23 @@
+{
+  "startingExperience": 0,
+  "startingGold": 50,
+  "startingMaps": [
+    {
+      "mapDefinitionId": "sample_operation",
+      "count": 3,
+      "instanceNamePrefix": "Sample Operation"
+    }
+  ],
+  "startingUnitCards": [
+    {
+      "unitCardDefinitionId": "guard_infantry_card",
+      "count": 1,
+      "displayNamePrefix": "Rook"
+    },
+    {
+      "unitCardDefinitionId": "raider_infantry_card",
+      "count": 2,
+      "displayNamePrefix": "Raider"
+    }
+  ]
+}

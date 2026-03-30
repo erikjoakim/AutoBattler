@@ -104,6 +104,7 @@ namespace AutoBattler
                 }
             }
 
+            BattleLootManager.Instance?.PopulateBattleResult(result, result.victory);
             CampaignRuntimeContext.Instance.SetPendingBattleResult(result);
             resultSubmitted = true;
         }

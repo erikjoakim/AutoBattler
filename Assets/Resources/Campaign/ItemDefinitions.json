@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "itemDefinitionId": "field_plating",
+      "displayName": "Field Plating",
+      "description": "Recovered armor plating ready for refit.",
+      "itemSlotType": "Utility",
+      "iconId": ""
+    }
+  ]
+}

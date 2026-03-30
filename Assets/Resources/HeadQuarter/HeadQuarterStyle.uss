@@ -1,0 +1,312 @@
+.hq-root {
+    flex-grow: 1;
+    background-color: rgb(23, 34, 39);
+    color: rgb(233, 238, 228);
+    padding-top: 12px;
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-bottom: 14px;
+}
+
+.top-bar {
+    height: 66px;
+    background-color: rgb(26, 38, 43);
+    border-radius: 10px;
+    padding-left: 18px;
+    padding-right: 18px;
+    justify-content: center;
+}
+
+.top-bar-label {
+    font-size: 24px;
+    letter-spacing: 1px;
+    unity-font-style: bold;
+    color: rgb(239, 242, 234);
+}
+
+.main-body {
+    flex-grow: 1;
+    flex-direction: row;
+    margin-top: 14px;
+    margin-bottom: 14px;
+}
+
+.panel {
+    background-color: rgba(20, 30, 35, 0.94);
+    border-radius: 12px;
+    padding-top: 14px;
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-bottom: 14px;
+}
+
+.left-panel {
+    width: 280px;
+    margin-right: 14px;
+}
+
+.center-panel {
+    flex-grow: 1;
+    margin-right: 14px;
+}
+
+.right-panel {
+    width: 420px;
+}
+
+.panel-title {
+    font-size: 21px;
+    unity-font-style: bold;
+    margin-bottom: 12px;
+    color: rgb(240, 242, 236);
+}
+
+.sub-panel {
+    background-color: rgba(16, 24, 28, 0.86);
+    border-radius: 10px;
+    padding-top: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-bottom: 10px;
+    margin-top: 12px;
+    flex-grow: 1;
+}
+
+.sub-panel-title {
+    font-size: 17px;
+    unity-font-style: bold;
+    margin-bottom: 8px;
+}
+
+.list-container {
+    flex-grow: 1;
+}
+
+.details-label {
+    white-space: normal;
+    font-size: 15px;
+    line-height: 20px;
+    min-height: 160px;
+    color: rgb(223, 230, 221);
+}
+
+.button-row {
+    flex-direction: row;
+    margin-top: 10px;
+    margin-bottom: 8px;
+}
+
+.action-button {
+    flex-grow: 1;
+    height: 40px;
+    border-radius: 8px;
+    margin-right: 8px;
+    font-size: 15px;
+    unity-font-style: bold;
+}
+
+.action-button-last {
+    margin-right: 0;
+}
+
+.primary-button {
+    background-color: rgb(188, 122, 46);
+    color: rgb(250, 247, 240);
+}
+
+.secondary-button {
+    background-color: rgb(93, 78, 67);
+    color: rgb(240, 236, 232);
+}
+
+.status-bar {
+    height: 72px;
+    background-color: rgba(17, 24, 27, 0.95);
+    border-radius: 10px;
+    justify-content: center;
+    padding-left: 18px;
+    padding-right: 18px;
+}
+
+.status-label {
+    font-size: 17px;
+    color: rgb(226, 231, 220);
+}
+
+.board-container {
+    flex-grow: 1;
+    position: relative;
+}
+
+.hex-slot {
+    position: absolute;
+    width: 148px;
+    height: 128px;
+    background-color: rgba(43, 54, 58, 0.95);
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 18px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+    border-top-color: rgba(9, 16, 18, 0.75);
+    border-right-color: rgba(9, 16, 18, 0.75);
+    border-bottom-color: rgba(9, 16, 18, 0.75);
+    border-left-color: rgba(9, 16, 18, 0.75);
+    align-items: center;
+    justify-content: center;
+    box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.28);
+}
+
+.hex-title {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    unity-text-align: middle-center;
+    font-size: 13px;
+    color: rgb(196, 208, 208);
+}
+
+.hex-state {
+    font-size: 16px;
+    unity-text-align: middle-center;
+    white-space: normal;
+    color: rgb(246, 247, 243);
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.hex-open {
+    background-color: rgba(53, 89, 68, 0.95);
+}
+
+.hex-occupied {
+    background-color: rgba(168, 116, 53, 0.96);
+}
+
+.hex-completed {
+    background-color: rgba(51, 96, 114, 0.96);
+}
+
+.hex-locked {
+    background-color: rgba(52, 57, 61, 0.75);
+}
+
+.hex-selected {
+    border-top-color: rgb(241, 228, 182);
+    border-right-color: rgb(241, 228, 182);
+    border-bottom-color: rgb(241, 228, 182);
+    border-left-color: rgb(241, 228, 182);
+}
+
+.inventory-card,
+.unit-card {
+    min-height: 74px;
+    margin-bottom: 10px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-radius: 10px;
+    background-color: rgba(41, 62, 74, 0.92);
+}
+
+.inventory-card-title,
+#UnitName {
+    font-size: 16px;
+    unity-font-style: bold;
+    color: rgb(246, 247, 242);
+}
+
+.inventory-card-subtitle,
+#UnitClass {
+    font-size: 13px;
+    margin-top: 4px;
+    color: rgb(201, 210, 205);
+}
+
+.unit-card {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(39, 57, 43, 0.92);
+}
+
+.unit-card-assigned {
+    background-color: rgba(83, 66, 34, 0.94);
+}
+
+.unit-card-text {
+    flex-grow: 1;
+}
+
+.small-action-button {
+    width: 88px;
+    height: 34px;
+    margin-left: 10px;
+    background-color: rgb(64, 124, 84);
+    color: rgb(244, 247, 242);
+    font-size: 14px;
+}
+
+.placeholder {
+    font-size: 14px;
+    color: rgb(184, 193, 188);
+    margin-top: 8px;
+}
+
+.dragged-map-ghost {
+    position: absolute;
+    background-color: rgba(188, 122, 46, 0.95);
+    border-radius: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    font-size: 14px;
+    color: rgb(249, 248, 242);
+    pointer-events: none;
+    display: none;
+}
+
+.result-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(7, 10, 12, 0.76);
+    justify-content: center;
+    align-items: center;
+    display: none;
+}
+
+.result-card {
+    width: 560px;
+    max-width: 82%;
+    min-height: 300px;
+    background-color: rgba(27, 38, 43, 0.98);
+    border-radius: 14px;
+    padding-top: 22px;
+    padding-bottom: 22px;
+    padding-left: 22px;
+    padding-right: 22px;
+    align-items: center;
+}
+
+.result-label {
+    flex-grow: 1;
+    width: 100%;
+    white-space: normal;
+    unity-text-align: upper-left;
+    font-size: 18px;
+    color: rgb(240, 242, 236);
+}
+
+.result-button {
+    width: 180px;
+    margin-top: 14px;
+}

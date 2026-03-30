@@ -68,6 +68,8 @@ namespace AutoBattler
 
             GUILayout.EndArea();
 
+            DrawLootFeed();
+
             if (BattleStateManager.Instance != null && BattleStateManager.Instance.IsBattleOver)
             {
                 DrawBattleResultSplash();
@@ -197,6 +199,31 @@ namespace AutoBattler
             splashMessageStyle.normal.textColor = previousMessageColor;
             bodyStyle.normal.textColor = previousBodyColor;
             GUI.color = previousColor;
+        }
+
+        private void DrawLootFeed()
+        {
+            if (BattleLootManager.Instance == null)
+            {
+                return;
+            }
+
+            var entries = BattleLootManager.Instance.GetRecentDropDisplayEntries();
+            GUILayout.BeginArea(new Rect(16f, 190f, 320f, 360f), GUI.skin.box);
+            GUILayout.Label("Loot Dropped", headerStyle);
+            if (entries == null || entries.Count == 0)
+            {
+                GUILayout.Label("No loot dropped yet.", bodyStyle);
+                GUILayout.EndArea();
+                return;
+            }
+
+            for (var i = 0; i < entries.Count; i++)
+            {
+                GUILayout.Label(entries[i], bodyStyle);
+            }
+
+            GUILayout.EndArea();
         }
     }
 }

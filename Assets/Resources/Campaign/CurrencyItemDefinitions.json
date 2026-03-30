@@ -1,0 +1,10 @@
+{
+  "currencyItems": [
+    {
+      "currencyItemDefinitionId": "scrap_parts",
+      "displayName": "Scrap Parts",
+      "description": "General-purpose battlefield salvage.",
+      "iconId": ""
+    }
+  ]
+}

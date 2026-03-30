@@ -66,6 +66,7 @@ namespace AutoBattler
                 supportObject.AddComponent<ScoreHud>();
                 supportObject.AddComponent<UnitInspectorHud>();
                 supportObject.AddComponent<BattleNavigationManager>();
+                supportObject.AddComponent<BattleLootManager>();
             }
             else if (FindAnyObjectByType<ScoreHud>() == null)
             {
@@ -92,6 +93,11 @@ namespace AutoBattler
                 ScoreManager.Instance.gameObject.AddComponent<BattleNavigationManager>();
             }
 
+            if (FindAnyObjectByType<BattleLootManager>() == null)
+            {
+                ScoreManager.Instance.gameObject.AddComponent<BattleLootManager>();
+            }
+
             if (CampaignRuntimeContext.Instance != null
                 && CampaignRuntimeContext.Instance.HasActiveMission
                 && FindAnyObjectByType<BattleCampaignBridge>() == null)
@@ -110,6 +116,11 @@ namespace AutoBattler
             if (BattleStateManager.Instance != null)
             {
                 BattleStateManager.Instance.ResetBattle();
+            }
+
+            if (BattleLootManager.Instance != null)
+            {
+                BattleLootManager.Instance.ResetLoot();
             }
         }
 
@@ -191,7 +202,7 @@ namespace AutoBattler
                     var area = startAreas[areaIndex];
                     var areaLocalIndex = areaSpawnCounts[areaIndex]++;
                     var worldPosition = area.GetSpawnPosition(areaLocalIndex, areaUnitTotals[areaIndex], formation);
-                    SpawnUnit(parent, definition, team, mission, worldPosition, targetPoint, unitConfig.ownedUnitCardId);
+                    SpawnUnit(parent, definition, team, mission, worldPosition, targetPoint, unitConfig.ownedUnitCardId, unitConfig.lootTableId);
                     spawnedCount++;
                 }
             }
@@ -367,13 +378,14 @@ namespace AutoBattler
             MissionType mission,
             Vector3 position,
             Vector3 targetPoint,
-            string ownedUnitCardId = null)
+            string ownedUnitCardId = null,
+            string lootTableId = null)
         {
             var unitObject = UnitFactory.CreateUnitObject(definition, team, parent, position);
             unitObject.name = team + " " + definition.UnitName + " " + mission;
 
             var unit = unitObject.AddComponent<BattleUnit>();
-            unit.Initialize(definition, team, mission, position, targetPoint);
+            unit.Initialize(definition, team, mission, position, targetPoint, lootTableId);
             if (!string.IsNullOrWhiteSpace(ownedUnitCardId))
             {
                 unit.LinkOwnedUnitCard(ownedUnitCardId);

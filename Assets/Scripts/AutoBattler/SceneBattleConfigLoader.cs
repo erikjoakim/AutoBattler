@@ -169,7 +169,8 @@ namespace AutoBattler
             {
                 count = Mathf.Max(1, JsonDataHelper.GetInt(source, "count", 1)),
                 mission = resolvedMission,
-                definition = definition
+                definition = definition,
+                lootTableId = JsonDataHelper.GetString(source, "lootTableId", string.Empty)
             };
 
             return true;

@@ -444,6 +444,17 @@ namespace AutoBattler
                 AppendCardNames(lines, result.deadUnitCardIds);
             }
 
+            if (result.claimedLoot != null && result.claimedLoot.Count > 0)
+            {
+                lines.Add(string.Empty);
+                lines.Add("Loot secured.");
+            }
+            else if (result.lostLoot != null && result.lostLoot.Count > 0)
+            {
+                lines.Add(string.Empty);
+                lines.Add("Dropped loot was lost.");
+            }
+
             resultLabel.text = string.Join("\n", lines);
         }
 

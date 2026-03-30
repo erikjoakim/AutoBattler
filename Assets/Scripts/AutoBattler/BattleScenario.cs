@@ -40,6 +40,8 @@ namespace AutoBattler
         [SerializeField] private string missionName = "Mission";
         [SerializeField] private string missionDescription = string.Empty;
         [SerializeField] private TextAsset sceneConfigAsset;
+        [SerializeField] private string victoryLootTableId = string.Empty;
+        [SerializeField] private string defaultEnemyLootTableId = string.Empty;
         [SerializeField] private bool debugLogUiToConsole;
         [SerializeField] private ScenarioConditionMode winEvaluationMode = ScenarioConditionMode.Any;
         [SerializeField] private ScenarioConditionMode loseEvaluationMode = ScenarioConditionMode.Any;
@@ -58,6 +60,8 @@ namespace AutoBattler
 
         public string MissionName => string.IsNullOrWhiteSpace(missionName) ? gameObject.scene.name : missionName;
         public string MissionDescription => missionDescription;
+        public string VictoryLootTableId => victoryLootTableId;
+        public string DefaultEnemyLootTableId => defaultEnemyLootTableId;
         public bool DebugLogUiToConsole => debugLogUiToConsole;
 
         private void Awake()

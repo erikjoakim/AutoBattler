@@ -95,6 +95,7 @@
       {
         "unitName": "Red Assault Tank",
         "unitType": "Assault Tank",
+        "lootTableId": "enemy_elite_tank",
         "fireReliability": "*0.95",
         "ammunition": [
           {
@@ -109,12 +110,15 @@
         "unitName": "Red Infantry Wall",
         "unitType": "Guard Infantry",
         "count": 2,
+        "lootTableId": "enemy_unit_basic",
         "armor": "+1"
       },
       {
         "unitName": "Red Raiders",
         "unitType": "Raider Infantry",
         "count": 2,
+        "lootTableId": "enemy_unit_basic",
+        "speed": "*0.8",
         "reloadTime": "*0.9",
         "moveReliability": "*0.8",
         "terrainSpeedModifiers": {

@@ -37,12 +37,14 @@ namespace AutoBattler
         public int NavigationAgentTypeId => navigationAgent != null ? navigationAgent.agentTypeID : NavMeshAgentTypeResolver.GetDefaultAgentTypeId();
         public string NavigationPathStatus => navigationAgent != null && navigationAgent.hasPath ? navigationAgent.pathStatus.ToString() : "NoPath";
         public string OwnedUnitCardId { get; private set; }
+        public string LootTableId { get; private set; }
 
-        public void Initialize(UnitDefinition definition, Team team, MissionType mission, Vector3 homePosition, Vector3 objective)
+        public void Initialize(UnitDefinition definition, Team team, MissionType mission, Vector3 homePosition, Vector3 objective, string lootTableId = null)
         {
             unitDefinition = definition;
             Team = team;
             Mission = mission;
+            LootTableId = lootTableId ?? string.Empty;
             currentHealth = definition.MaxHealth;
             guardPosition = homePosition;
             objectivePosition = objective;
