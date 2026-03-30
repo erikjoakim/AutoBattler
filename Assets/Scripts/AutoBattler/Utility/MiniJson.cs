@@ -12,6 +12,11 @@ namespace AutoBattler
             return json == null ? null : Parser.Parse(json);
         }
 
+        public static string Serialize(object value)
+        {
+            return Serializer.Serialize(value);
+        }
+
         private sealed class Parser : IDisposable
         {
             private const string WordBreak = "{}[],:\"";
@@ -334,6 +339,132 @@ namespace AutoBattler
                 True,
                 False,
                 Null
+            }
+        }
+
+        private sealed class Serializer
+        {
+            private readonly StringBuilder builder = new StringBuilder();
+
+            public static string Serialize(object value)
+            {
+                var serializer = new Serializer();
+                serializer.WriteValue(value);
+                return serializer.builder.ToString();
+            }
+
+            private void WriteValue(object value)
+            {
+                switch (value)
+                {
+                    case null:
+                        builder.Append("null");
+                        break;
+                    case string stringValue:
+                        WriteString(stringValue);
+                        break;
+                    case bool boolValue:
+                        builder.Append(boolValue ? "true" : "false");
+                        break;
+                    case IDictionary<string, object> dictionary:
+                        WriteObject(dictionary);
+                        break;
+                    case IList<object> list:
+                        WriteArray(list);
+                        break;
+                    case char charValue:
+                        WriteString(charValue.ToString());
+                        break;
+                    case sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal:
+                        builder.Append(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture));
+                        break;
+                    default:
+                        WriteString(value.ToString());
+                        break;
+                }
+            }
+
+            private void WriteObject(IDictionary<string, object> dictionary)
+            {
+                builder.Append('{');
+                var first = true;
+                foreach (var pair in dictionary)
+                {
+                    if (!first)
+                    {
+                        builder.Append(',');
+                    }
+
+                    WriteString(pair.Key);
+                    builder.Append(':');
+                    WriteValue(pair.Value);
+                    first = false;
+                }
+
+                builder.Append('}');
+            }
+
+            private void WriteArray(IList<object> list)
+            {
+                builder.Append('[');
+                for (var i = 0; i < list.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        builder.Append(',');
+                    }
+
+                    WriteValue(list[i]);
+                }
+
+                builder.Append(']');
+            }
+
+            private void WriteString(string value)
+            {
+                builder.Append('"');
+                for (var i = 0; i < value.Length; i++)
+                {
+                    var c = value[i];
+                    switch (c)
+                    {
+                        case '"':
+                            builder.Append("\\\"");
+                            break;
+                        case '\\':
+                            builder.Append("\\\\");
+                            break;
+                        case '\b':
+                            builder.Append("\\b");
+                            break;
+                        case '\f':
+                            builder.Append("\\f");
+                            break;
+                        case '\n':
+                            builder.Append("\\n");
+                            break;
+                        case '\r':
+                            builder.Append("\\r");
+                            break;
+                        case '\t':
+                            builder.Append("\\t");
+                            break;
+                        default:
+                            if (c < 32 || c > 126)
+                            {
+                                builder.Append("\\u");
+                                builder.Append(((int)c).ToString("x4"));
+                            }
+                            else
+                            {
+                                builder.Append(c);
+                            }
+
+                            break;
+                    }
+                }
+
+                builder.Append('"');
             }
         }
     }

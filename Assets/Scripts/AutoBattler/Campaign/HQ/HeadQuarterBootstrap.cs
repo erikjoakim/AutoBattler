@@ -35,6 +35,7 @@ namespace AutoBattler
         private string selectedHexSlotId;
         private string draggedMapItemId;
         private VisualElement draggedMapGhost;
+        private LootCatalogs lootCatalogs;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateBootstrap()
@@ -56,6 +57,7 @@ namespace AutoBattler
         private void Start()
         {
             EnsureCamera();
+            lootCatalogs = LootCatalogLoader.Load();
             EnsureUiDocument();
             BindUi();
             BuildHexBoard();
@@ -209,28 +211,77 @@ namespace AutoBattler
         {
             inventoryList.Clear();
             var maps = CampaignRuntimeContext.Instance.GetAvailableMapItems();
+            var currencyStacks = CampaignRuntimeContext.Instance.GetCurrencyItemStacks();
+            var ownedItems = CampaignRuntimeContext.Instance.GetOwnedUnitItems();
             for (var i = 0; i < maps.Count; i++)
             {
                 var mapItem = maps[i];
                 CampaignRuntimeContext.Instance.Catalogs.TryGetMapDefinition(mapItem.mapDefinitionId, out var definition);
-                var card = new VisualElement();
-                card.AddToClassList("inventory-card");
-
-                var title = new Label(definition?.displayName ?? mapItem.instanceName);
-                title.AddToClassList("inventory-card-title");
-                var subtitle = new Label("Tier " + (definition?.tier ?? 1));
-                subtitle.AddToClassList("inventory-card-subtitle");
-
-                card.Add(title);
-                card.Add(subtitle);
+                var card = BuildInventoryCard(
+                    definition?.displayName ?? mapItem.instanceName,
+                    "Map  T" + (definition?.tier ?? 1),
+                    "inventory-card-map");
                 RegisterMapDrag(card, mapItem.mapItemId, definition?.displayName ?? mapItem.instanceName);
                 inventoryList.Add(card);
             }
 
-            if (maps.Count == 0)
+            for (var i = 0; i < currencyStacks.Count; i++)
             {
-                inventoryList.Add(BuildPlaceholder("No maps available."));
+                var stack = currencyStacks[i];
+                if (stack == null || stack.amount <= 0)
+                {
+                    continue;
+                }
+
+                var displayName = stack.currencyItemDefinitionId;
+                if (lootCatalogs != null && lootCatalogs.TryGetCurrencyItemDefinition(stack.currencyItemDefinitionId, out var definition))
+                {
+                    displayName = definition.displayName;
+                }
+
+                inventoryList.Add(BuildInventoryCard(displayName, "Currency  x" + stack.amount, "inventory-card-currency"));
             }
+
+            for (var i = 0; i < ownedItems.Count; i++)
+            {
+                var item = ownedItems[i];
+                if (item == null)
+                {
+                    continue;
+                }
+
+                var displayName = item.itemDefinitionId;
+                if (lootCatalogs != null && lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out var definition))
+                {
+                    displayName = definition.displayName;
+                }
+
+                inventoryList.Add(BuildInventoryCard(displayName, "Item", "inventory-card-item"));
+            }
+
+            if (inventoryList.childCount == 0)
+            {
+                inventoryList.Add(BuildPlaceholder("Inventory is empty."));
+            }
+        }
+
+        private static VisualElement BuildInventoryCard(string titleText, string subtitleText, string typeClass)
+        {
+            var card = new VisualElement();
+            card.AddToClassList("inventory-card");
+            if (!string.IsNullOrWhiteSpace(typeClass))
+            {
+                card.AddToClassList(typeClass);
+            }
+
+            var title = new Label(titleText);
+            title.AddToClassList("inventory-card-title");
+            var subtitle = new Label(subtitleText);
+            subtitle.AddToClassList("inventory-card-subtitle");
+
+            card.Add(title);
+            card.Add(subtitle);
+            return card;
         }
 
         private void PopulateCards()

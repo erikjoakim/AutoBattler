@@ -34,13 +34,12 @@ namespace AutoBattler
     public static class CampaignCatalogLoader
     {
         private const string MapDefinitionsPath = "Campaign/MapDefinitions";
-        private const string UnitCardDefinitionsPath = "Campaign/UnitCardDefinitions";
         private const string StartingLoadoutPath = "Campaign/StartingLoadout";
 
         public static CampaignCatalogs Load()
         {
             var mapDefinitions = LoadMapDefinitions();
-            var unitCardDefinitions = LoadUnitCardDefinitions();
+            var unitCardDefinitions = BuildUnitCardDefinitionsFromGameUnits();
             var startingLoadout = LoadStartingLoadout();
             return new CampaignCatalogs(mapDefinitions, unitCardDefinitions, startingLoadout);
         }
@@ -85,38 +84,23 @@ namespace AutoBattler
             return definitions.Count > 0 ? definitions : CreateDefaultMapDefinitions();
         }
 
-        private static Dictionary<string, UnitCardDefinition> LoadUnitCardDefinitions()
+        private static Dictionary<string, UnitCardDefinition> BuildUnitCardDefinitionsFromGameUnits()
         {
-            var asset = Resources.Load<TextAsset>(UnitCardDefinitionsPath);
-            if (asset == null)
-            {
-                return CreateDefaultUnitCardDefinitions();
-            }
-
-            var root = JsonDataHelper.AsObject(MiniJson.Deserialize(asset.text));
-            var items = JsonDataHelper.GetArray(root, "unitCards");
+            var gameCatalog = GameDataCatalogLoader.Load();
             var definitions = new Dictionary<string, UnitCardDefinition>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < items.Count; i++)
+            foreach (var template in gameCatalog.GetUnitTemplates())
             {
-                var item = JsonDataHelper.AsObject(items[i]);
-                if (item == null)
+                if (template == null || string.IsNullOrWhiteSpace(template.UnitTypeKey))
                 {
                     continue;
                 }
 
-                var definitionId = JsonDataHelper.GetString(item, "unitCardDefinitionId", string.Empty);
-                var baseTemplateId = JsonDataHelper.GetString(item, "baseTemplateId", string.Empty);
-                if (string.IsNullOrWhiteSpace(definitionId) || string.IsNullOrWhiteSpace(baseTemplateId))
+                definitions[template.UnitTypeKey] = new UnitCardDefinition
                 {
-                    continue;
-                }
-
-                definitions[definitionId] = new UnitCardDefinition
-                {
-                    unitCardDefinitionId = definitionId,
-                    displayName = JsonDataHelper.GetString(item, "displayName", definitionId),
-                    baseTemplateId = baseTemplateId,
-                    purchaseCostGold = Mathf.Max(0, JsonDataHelper.GetInt(item, "purchaseCostGold", 10))
+                    unitCardDefinitionId = template.UnitTypeKey,
+                    displayName = string.IsNullOrWhiteSpace(template.UnitName) ? template.UnitTypeKey : template.UnitName,
+                    baseTemplateId = template.UnitTypeKey,
+                    purchaseCostGold = Mathf.Max(0, template.PurchaseCostGold)
                 };
             }
 
@@ -145,7 +129,7 @@ namespace AutoBattler
             {
                 ["guard_infantry_card"] = new UnitCardDefinition
                 {
-                    unitCardDefinitionId = "guard_infantry_card",
+                    unitCardDefinitionId = "Guard Infantry",
                     displayName = "Guard Infantry",
                     baseTemplateId = "Guard Infantry",
                     purchaseCostGold = 10
@@ -215,7 +199,8 @@ namespace AutoBattler
                 {
                     unitCardDefinitionId = unitCardDefinitionId,
                     count = Mathf.Max(1, JsonDataHelper.GetInt(item, "count", 1)),
-                    displayNamePrefix = JsonDataHelper.GetString(item, "displayNamePrefix", string.Empty)
+                    displayNamePrefix = JsonDataHelper.GetString(item, "displayNamePrefix", string.Empty),
+                    overrideJson = BuildStartingUnitCardOverrideJson(item)
                 });
             }
 
@@ -225,6 +210,31 @@ namespace AutoBattler
             }
 
             return loadout;
+        }
+
+        private static string BuildStartingUnitCardOverrideJson(Dictionary<string, object> source)
+        {
+            if (source == null)
+            {
+                return string.Empty;
+            }
+
+            var sanitized = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in source)
+            {
+                if (string.Equals(pair.Key, "unitCardDefinitionId", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "count", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "displayNamePrefix", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "unitType", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "unitName", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                sanitized[pair.Key] = pair.Value;
+            }
+
+            return sanitized.Count == 0 ? string.Empty : MiniJson.Serialize(sanitized);
         }
 
         private static StartingLoadoutDefinition CreateDefaultStartingLoadout()
@@ -244,7 +254,7 @@ namespace AutoBattler
 
             loadout.startingUnitCards.Add(new StartingUnitCardEntry
             {
-                unitCardDefinitionId = "guard_infantry_card",
+                unitCardDefinitionId = "Guard Infantry",
                 count = 1,
                 displayNamePrefix = "Rook"
             });

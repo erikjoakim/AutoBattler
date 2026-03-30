@@ -94,6 +94,16 @@ namespace AutoBattler
             return items;
         }
 
+        public IReadOnlyList<CurrencyItemStack> GetCurrencyItemStacks()
+        {
+            return saveData.currencyItemStacks;
+        }
+
+        public IReadOnlyList<OwnedUnitItem> GetOwnedUnitItems()
+        {
+            return saveData.ownedUnitItems;
+        }
+
         public IReadOnlyList<OwnedUnitCard> GetCardsAssignedToSlot(string hexSlotId)
         {
             var cards = new List<OwnedUnitCard>();
@@ -478,12 +488,48 @@ namespace AutoBattler
                     continue;
                 }
 
-                var unitSpawn = UnitSpawnConfig.FromTemplate(catalog, template.UnitTypeKey, string.IsNullOrWhiteSpace(ownedCard.displayName) ? template.UnitName : ownedCard.displayName, 1);
+                var unitSpawn = BuildUnitSpawnConfigFromOwnedCard(catalog, template, ownedCard);
+                if (unitSpawn == null)
+                {
+                    continue;
+                }
+
                 unitSpawn.ownedUnitCardId = ownedCard.unitCardId;
                 result.Add(unitSpawn);
             }
 
             return result;
+        }
+
+        private static UnitSpawnConfig BuildUnitSpawnConfigFromOwnedCard(GameDataCatalog catalog, GameUnitTemplate template, OwnedUnitCard ownedCard)
+        {
+            if (catalog == null || template == null || ownedCard == null)
+            {
+                return null;
+            }
+
+            var resolvedName = string.IsNullOrWhiteSpace(ownedCard.displayName) ? template.UnitName : ownedCard.displayName;
+            if (string.IsNullOrWhiteSpace(ownedCard.overrideJson))
+            {
+                return UnitSpawnConfig.FromTemplate(catalog, template.UnitTypeKey, resolvedName, 1);
+            }
+
+            var source = JsonDataHelper.AsObject(MiniJson.Deserialize(ownedCard.overrideJson));
+            if (source == null)
+            {
+                return UnitSpawnConfig.FromTemplate(catalog, template.UnitTypeKey, resolvedName, 1);
+            }
+
+            source["unitType"] = template.UnitTypeKey;
+            source["unitName"] = resolvedName;
+            source["count"] = 1L;
+            if (!SceneBattleConfigLoader.TryBuildUnitSpawnConfigFromSource(source, catalog, out var unitSpawn))
+            {
+                Debug.LogWarning("Failed to build owned unit card from override payload: " + ownedCard.unitCardId);
+                return null;
+            }
+
+            return unitSpawn;
         }
 
         private void UnlockNeighboringHexes(string hexSlotId)
@@ -610,6 +656,7 @@ namespace AutoBattler
                         definitionId = definition.unitCardDefinitionId,
                         displayName = prefix + "-" + (count + 1),
                         baseTemplateId = definition.baseTemplateId,
+                        overrideJson = entry.overrideJson,
                         status = UnitCardStatus.Available
                     });
                     unitCardSequence++;

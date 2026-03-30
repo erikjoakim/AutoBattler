@@ -8,6 +8,8 @@ namespace AutoBattler
     {
         public FormationConfig formation;
         public TerrainMovementConfig terrainMovement;
+        public string victoryLootTableId;
+        public string defaultEnemyLootTableId;
         public TeamConfig blueTeam;
         public TeamConfig redTeam;
 
@@ -33,6 +35,8 @@ namespace AutoBattler
                 redTeam = new TeamConfig { units = Array.Empty<UnitSpawnConfig>() };
             }
 
+            victoryLootTableId ??= string.Empty;
+            defaultEnemyLootTableId ??= string.Empty;
             formation.Sanitize();
             terrainMovement.Sanitize();
         }
@@ -43,6 +47,8 @@ namespace AutoBattler
             {
                 formation = new FormationConfig(),
                 terrainMovement = new TerrainMovementConfig(),
+                victoryLootTableId = string.Empty,
+                defaultEnemyLootTableId = string.Empty,
                 blueTeam = TeamConfig.CreateDefaultBlue(catalog),
                 redTeam = TeamConfig.CreateDefaultRed(catalog)
             };

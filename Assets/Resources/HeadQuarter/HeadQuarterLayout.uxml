@@ -5,8 +5,8 @@
         </ui:VisualElement>
         <ui:VisualElement name="MainBody" class="main-body">
             <ui:VisualElement name="LeftPanel" class="panel left-panel">
-                <ui:Label text="Available Maps" class="panel-title" />
-                <ui:VisualElement name="MapInventoryList" class="list-container" />
+                <ui:Label text="Inventory" class="panel-title" />
+                <ui:VisualElement name="MapInventoryList" class="list-container inventory-grid" />
             </ui:VisualElement>
             <ui:VisualElement name="CenterPanel" class="panel center-panel">
                 <ui:Label text="Operations Grid" class="panel-title" />

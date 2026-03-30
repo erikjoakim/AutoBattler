@@ -101,6 +101,7 @@ namespace AutoBattler
                     Mathf.Clamp01(JsonDataHelper.GetFloat(item, "accuracy", 1f)),
                     Mathf.Clamp01(JsonDataHelper.GetFloat(item, "fireReliability", 1f)),
                     Mathf.Clamp01(JsonDataHelper.GetFloat(item, "moveReliability", 1f)),
+                    Mathf.Max(0, JsonDataHelper.GetInt(item, "purchaseCostGold", 10)),
                     JsonDataHelper.GetString(item, "navigationAgentType", string.Empty),
                     terrainSpeedProfile,
                     terrainPathCostProfile,

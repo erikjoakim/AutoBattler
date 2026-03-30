@@ -763,8 +763,7 @@ MonoBehaviour:
   missionName: Mission
   missionDescription: 
   sceneConfigAsset: {fileID: 4900000, guid: 3fe78e8c4a7cfee4eba9e92cc3db2b2c, type: 3}
-  victoryLootTableId: sample_operation_victory
-  defaultEnemyLootTableId: enemy_unit_basic
+  playerUnitsConfigAsset: {fileID: 4900000, guid: c9f7f2c8d4f1406e8db59f9da3c7aa11, type: 3}
   debugLogUiToConsole: 1
   winEvaluationMode: 1
   loseEvaluationMode: 1

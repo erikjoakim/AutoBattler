@@ -25,6 +25,11 @@ namespace AutoBattler
             return unitTemplates.TryGetValue(unitType, out template);
         }
 
+        public IEnumerable<GameUnitTemplate> GetUnitTemplates()
+        {
+            return unitTemplates.Values;
+        }
+
         public static GameDataCatalog CreateDefault()
         {
             var ammoTemplates = new Dictionary<string, GameAmmoTemplate>(StringComparer.OrdinalIgnoreCase)
@@ -51,6 +56,7 @@ namespace AutoBattler
                         0.95f,
                         0.96f,
                         0.94f,
+                        10,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.3f), ("Grass", 1f), ("Mud", 0.65f), ("Rock", 0.75f)),
                         CreateTerrainSpeedProfile(("Road", 1f), ("Grass", 2.5f), ("Mud", 5f), ("Rock", 3.5f)),
@@ -74,6 +80,7 @@ namespace AutoBattler
                         1f,
                         0.98f,
                         0.9f,
+                        18,
                         "TankAgent",
                         CreateTerrainSpeedProfile(("Road", 1.35f), ("Grass", 1f), ("Mud", 0.6f), ("Rock", 0.75f)),
                         CreateTerrainSpeedProfile(("Road", 1f), ("Grass", 3f), ("Mud", 6f), ("Rock", 4f)),
@@ -97,6 +104,7 @@ namespace AutoBattler
                         0.98f,
                         0.99f,
                         0.97f,
+                        10,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.15f), ("Grass", 1f), ("Mud", 0.85f), ("Rock", 0.95f)),
                         CreateTerrainSpeedProfile(("Road", 1f), ("Grass", 1.4f), ("Mud", 2.2f), ("Rock", 1.8f)),
@@ -120,6 +128,7 @@ namespace AutoBattler
                         0.92f,
                         0.95f,
                         0.95f,
+                        12,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.2f), ("Grass", 1f), ("Mud", 0.9f), ("Rock", 1f)),
                         CreateTerrainSpeedProfile(("Road", 1f), ("Grass", 1.3f), ("Mud", 2f), ("Rock", 1.4f)),
@@ -233,6 +242,7 @@ namespace AutoBattler
             float accuracy,
             float fireReliability,
             float moveReliability,
+            int purchaseCostGold,
             string navigationAgentType,
             TerrainSpeedProfile terrainSpeedProfile,
             TerrainSpeedProfile terrainPathCostProfile,
@@ -249,6 +259,7 @@ namespace AutoBattler
             Accuracy = accuracy;
             FireReliability = fireReliability;
             MoveReliability = moveReliability;
+            PurchaseCostGold = purchaseCostGold;
             NavigationAgentType = navigationAgentType;
             TerrainSpeedProfile = terrainSpeedProfile ?? TerrainSpeedProfile.Empty;
             TerrainPathCostProfile = terrainPathCostProfile ?? TerrainSpeedProfile.Empty;
@@ -266,6 +277,7 @@ namespace AutoBattler
         public float Accuracy { get; }
         public float FireReliability { get; }
         public float MoveReliability { get; }
+        public int PurchaseCostGold { get; }
         public string NavigationAgentType { get; }
         public TerrainSpeedProfile TerrainSpeedProfile { get; }
         public TerrainSpeedProfile TerrainPathCostProfile { get; }
@@ -273,6 +285,7 @@ namespace AutoBattler
         public UnitDefinition BuildDefinition(string resolvedUnitName, AmmoDefinition[] ammunition, int[] ammunitionCounts)
         {
             return new UnitDefinition(
+                UnitTypeKey,
                 string.IsNullOrWhiteSpace(resolvedUnitName) ? UnitName : resolvedUnitName,
                 UnitType,
                 MaxHealth,

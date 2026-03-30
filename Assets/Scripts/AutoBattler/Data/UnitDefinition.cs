@@ -6,6 +6,7 @@ namespace AutoBattler
     [Serializable]
     public sealed class UnitDefinition
     {
+        [SerializeField] private string templateId;
         [SerializeField] private string unitName;
         [SerializeField] private UnitType unitType;
         [SerializeField] private int maxHealth = 1;
@@ -22,6 +23,7 @@ namespace AutoBattler
         private readonly TerrainSpeedProfile terrainPathCostProfile;
 
         public UnitDefinition(
+            string templateId,
             string unitName,
             UnitType unitType,
             int maxHealth,
@@ -37,6 +39,7 @@ namespace AutoBattler
             int[] ammunitionCounts,
             params AmmoDefinition[] ammunition)
         {
+            this.templateId = templateId;
             this.unitName = unitName;
             this.unitType = unitType;
             this.maxHealth = maxHealth;
@@ -53,6 +56,7 @@ namespace AutoBattler
             this.ammunitionCounts = ammunitionCounts ?? Array.Empty<int>();
         }
 
+        public string TemplateId => templateId;
         public string UnitName => unitName;
         public UnitType UnitType => unitType;
         public int MaxHealth => maxHealth;

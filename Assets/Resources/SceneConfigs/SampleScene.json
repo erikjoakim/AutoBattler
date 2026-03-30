@@ -5,6 +5,8 @@
     "forwardSpacing": 4.0,
     "distanceFromStartPoint": 6.0
   },
+  "victoryLootTableId": "sample_operation_victory",
+  "defaultEnemyLootTableId": "enemy_unit_basic",
   "terrainMapping": [
     {
       "terrainLayer": "GrassTL",
@@ -32,60 +34,6 @@
       "navArea": "RockArea"
     }
   ],
-  "blueTeam": {
-    "units": [
-      {
-        "unitName": "First Tank",
-        "unitType": "Guard Tank"
-      },
-      {
-        "unitName": "Blue Shellers",
-        "unitType": "Assault Tank",
-        "terrainSpeedModifiers": {
-          "Road": 4.0,
-          "Grass": 1.0,
-          "Mud": 0.9,
-          "Rock": 1.0
-        },
-        "terrainPathCosts": {
-          "Road": 1.0,
-          "Grass": 5.0,
-          "Mud": 7.0,
-          "Rock": 5.0
-        },
-        "ammunition": [
-          {
-            "ammoType": "Tank Shell",
-            "damage": "+2",
-            "radius": "*1.2",
-            "accuracy": "*0.9",
-            "damageReliability": "*0.97",
-            "ammunitionCount": 6
-          }
-        ]
-      },
-      {
-        "unitName": "Blue Line Infantry",
-        "unitType": "Guard Infantry",
-        "count": 1
-      },
-      {
-        "unitName": "Blue Raiders",
-        "unitType": "Raider Infantry",
-        "count": 1,
-        "speed": "+0.3",
-        "moveReliability": "*0.96",
-        "terrainSpeedModifiers": {
-          "Road": "*1.1"
-        },
-        "terrainPathCosts": {
-          "Road": 2.0,
-          "Grass": 1.5,
-          "Mud": 2.0
-        }
-      }
-    ]
-  },
   "redTeam": {
     "units": [
       {

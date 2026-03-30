@@ -65,6 +65,7 @@ namespace AutoBattler
         public string unitCardDefinitionId;
         public int count = 1;
         public string displayNamePrefix;
+        public string overrideJson;
     }
 
     [Serializable]
@@ -91,6 +92,7 @@ namespace AutoBattler
         public string definitionId;
         public string displayName;
         public string baseTemplateId;
+        public string overrideJson;
         public int experience;
         public int level = 1;
         public UnitCardStatus status = UnitCardStatus.Available;

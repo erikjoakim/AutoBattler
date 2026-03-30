@@ -10,14 +10,24 @@
   ],
   "startingUnitCards": [
     {
-      "unitCardDefinitionId": "guard_infantry_card",
+      "unitCardDefinitionId": "Guard Infantry",
       "count": 1,
       "displayNamePrefix": "Rook"
     },
     {
-      "unitCardDefinitionId": "raider_infantry_card",
+      "unitCardDefinitionId": "Raider Infantry",
       "count": 2,
-      "displayNamePrefix": "Raider"
+      "displayNamePrefix": "Raider",
+      "speed": "+0.4",
+      "terrainSpeedModifiers": {
+        "Road": "*1.1"
+      },
+      "ammunition": [
+        {
+          "ammoType": "Grenade",
+          "ammunitionCount": 5
+        }
+      ]
     }
   ]
 }

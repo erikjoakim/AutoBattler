@@ -12,6 +12,7 @@
       "accuracy": 0.95,
       "fireReliability": 0.96,
       "moveReliability": 0.94,
+      "purchaseCostGold": 10,
       "navigationAgentType": "",
       "terrainSpeedModifiers": {
         "Road": 1.3,
@@ -48,6 +49,7 @@
       "accuracy": 1.0,
       "fireReliability": 0.98,
       "moveReliability": 0.9,
+      "purchaseCostGold": 18,
       "reloadTime": 1.7,
       "navigationAgentType": "TankAgent",
       "terrainSpeedModifiers": {
@@ -85,6 +87,7 @@
       "accuracy": 0.98,
       "fireReliability": 0.99,
       "moveReliability": 0.97,
+      "purchaseCostGold": 10,
       "navigationAgentType": "",
       "terrainSpeedModifiers": {
         "Road": 1.15,
@@ -121,6 +124,7 @@
       "accuracy": 0.92,
       "fireReliability": 0.95,
       "moveReliability": 0.95,
+      "purchaseCostGold": 12,
       "reloadTime": 1.0,
       "navigationAgentType": "",
       "terrainSpeedModifiers": {

@@ -40,8 +40,7 @@ namespace AutoBattler
         [SerializeField] private string missionName = "Mission";
         [SerializeField] private string missionDescription = string.Empty;
         [SerializeField] private TextAsset sceneConfigAsset;
-        [SerializeField] private string victoryLootTableId = string.Empty;
-        [SerializeField] private string defaultEnemyLootTableId = string.Empty;
+        [SerializeField] private TextAsset playerUnitsConfigAsset;
         [SerializeField] private bool debugLogUiToConsole;
         [SerializeField] private ScenarioConditionMode winEvaluationMode = ScenarioConditionMode.Any;
         [SerializeField] private ScenarioConditionMode loseEvaluationMode = ScenarioConditionMode.Any;
@@ -57,11 +56,12 @@ namespace AutoBattler
         private float elapsedTime;
         private bool isInitialized;
         private bool useRuntimeFallbackRules;
+        private SceneBattleConfig loadedSceneConfig;
 
         public string MissionName => string.IsNullOrWhiteSpace(missionName) ? gameObject.scene.name : missionName;
         public string MissionDescription => missionDescription;
-        public string VictoryLootTableId => victoryLootTableId;
-        public string DefaultEnemyLootTableId => defaultEnemyLootTableId;
+        public string VictoryLootTableId => GetResolvedSceneConfig().victoryLootTableId;
+        public string DefaultEnemyLootTableId => GetResolvedSceneConfig().defaultEnemyLootTableId;
         public bool DebugLogUiToConsole => debugLogUiToConsole;
 
         private void Awake()
@@ -94,12 +94,22 @@ namespace AutoBattler
 
         public SceneBattleConfig LoadSceneConfig()
         {
-            if (sceneConfigAsset != null)
+            loadedSceneConfig = sceneConfigAsset != null
+                ? SceneBattleConfigLoader.Load(sceneConfigAsset, playerUnitsConfigAsset, sceneConfigAsset.name)
+                : SceneBattleConfigLoader.LoadForActiveScene();
+
+            return loadedSceneConfig;
+        }
+
+        public void ValidateSceneSetup()
+        {
+            if (sceneConfigAsset == null)
             {
-                return SceneBattleConfigLoader.Load(sceneConfigAsset, sceneConfigAsset.name);
+                Debug.LogWarning("BattleScenario on " + name + " has no scene config asset assigned. Falling back to scene-name-based config lookup.");
             }
 
-            return SceneBattleConfigLoader.LoadForActiveScene();
+            ValidateConditions(playerWinConditions, "player win");
+            ValidateConditions(playerLoseConditions, "player lose");
         }
 
         public void Initialize(VictoryPointMarker[] sceneVictoryPoints, EnemySpawnerMarker[] sceneSpawners)
@@ -173,15 +183,14 @@ namespace AutoBattler
             return string.Empty;
         }
 
-        public void ValidateSceneSetup()
+        private SceneBattleConfig GetResolvedSceneConfig()
         {
-            if (sceneConfigAsset == null)
+            if (loadedSceneConfig == null)
             {
-                Debug.LogWarning("BattleScenario on " + name + " has no scene config asset assigned. Falling back to scene-name-based config lookup.");
+                loadedSceneConfig = LoadSceneConfig();
             }
 
-            ValidateConditions(playerWinConditions, "player win");
-            ValidateConditions(playerLoseConditions, "player lose");
+            return loadedSceneConfig ?? SceneBattleConfig.CreateDefault(GameDataCatalogLoader.Load());
         }
 
         private void Update()

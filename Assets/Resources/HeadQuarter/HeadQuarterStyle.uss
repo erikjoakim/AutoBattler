@@ -41,7 +41,7 @@
 }
 
 .left-panel {
-    width: 280px;
+    width: 320px;
     margin-right: 14px;
 }
 
@@ -80,6 +80,12 @@
 
 .list-container {
     flex-grow: 1;
+}
+
+.inventory-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
 }
 
 .details-label {
@@ -214,6 +220,33 @@
     background-color: rgba(41, 62, 74, 0.92);
 }
 
+.inventory-card {
+    width: 86px;
+    height: 96px;
+    min-height: 96px;
+    margin-right: 6px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 8px;
+    padding-right: 8px;
+    justify-content: flex-start;
+    align-self: flex-start;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.inventory-card-map {
+    background-color: rgba(41, 62, 74, 0.92);
+}
+
+.inventory-card-currency {
+    background-color: rgba(77, 72, 35, 0.92);
+}
+
+.inventory-card-item {
+    background-color: rgba(50, 69, 51, 0.92);
+}
+
 .inventory-card-title,
 #UnitName {
     font-size: 16px;
@@ -226,6 +259,19 @@
     font-size: 13px;
     margin-top: 4px;
     color: rgb(201, 210, 205);
+}
+
+.inventory-card .inventory-card-title {
+    font-size: 13px;
+    white-space: normal;
+    max-width: 100%;
+}
+
+.inventory-card .inventory-card-subtitle {
+    font-size: 11px;
+    white-space: normal;
+    max-width: 100%;
+    margin-top: 6px;
 }
 
 .unit-card {

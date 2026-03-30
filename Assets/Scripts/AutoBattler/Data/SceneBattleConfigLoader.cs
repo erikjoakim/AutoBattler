@@ -8,6 +8,7 @@ namespace AutoBattler
     public static class SceneBattleConfigLoader
     {
         private const string SceneConfigResourcePath = "SceneConfigs/";
+        private const string PlayerConfigResourceName = "PlayerUnits";
 
         public static SceneBattleConfig LoadForActiveScene()
         {
@@ -16,45 +17,92 @@ namespace AutoBattler
 
         public static SceneBattleConfig Load(string sceneName)
         {
-            var configAsset = Resources.Load<TextAsset>(SceneConfigResourcePath + sceneName);
-            return Load(configAsset, sceneName);
+            var sceneConfigAsset = Resources.Load<TextAsset>(SceneConfigResourcePath + sceneName);
+            var playerConfigAsset = Resources.Load<TextAsset>(SceneConfigResourcePath + PlayerConfigResourceName);
+            return Load(sceneConfigAsset, playerConfigAsset, sceneName);
         }
 
-        public static SceneBattleConfig Load(TextAsset configAsset, string configName = null)
+        public static SceneBattleConfig Load(TextAsset sceneConfigAsset, TextAsset playerConfigAsset, string configName = null)
         {
             var catalog = GameDataCatalogLoader.Load();
-            if (configAsset == null)
+            if (sceneConfigAsset == null)
             {
                 var label = string.IsNullOrWhiteSpace(configName) ? "the requested config" : configName;
                 Debug.LogWarning("No scene config found for " + label + ". Using the built-in fallback config.");
                 return SceneBattleConfig.CreateDefault(catalog);
             }
 
-            var root = JsonDataHelper.AsObject(MiniJson.Deserialize(configAsset.text));
-            if (root == null)
+            var sceneRoot = JsonDataHelper.AsObject(MiniJson.Deserialize(sceneConfigAsset.text));
+            if (sceneRoot == null)
             {
-                var label = string.IsNullOrWhiteSpace(configName) ? configAsset.name : configName;
+                var label = string.IsNullOrWhiteSpace(configName) ? sceneConfigAsset.name : configName;
                 Debug.LogWarning("Failed to parse scene config for " + label + ". Using the built-in fallback config.");
                 return SceneBattleConfig.CreateDefault(catalog);
             }
 
+            var playerRoot = playerConfigAsset == null ? null : JsonDataHelper.AsObject(MiniJson.Deserialize(playerConfigAsset.text));
             var config = new SceneBattleConfig
             {
-                formation = ParseFormation(root),
-                terrainMovement = ParseTerrainMovement(root),
-                blueTeam = ParseTeam(root, "blueTeam", catalog),
-                redTeam = ParseTeam(root, "redTeam", catalog)
+                formation = ParseFormation(sceneRoot),
+                terrainMovement = ParseTerrainMovement(sceneRoot),
+                victoryLootTableId = JsonDataHelper.GetString(sceneRoot, "victoryLootTableId", string.Empty),
+                defaultEnemyLootTableId = JsonDataHelper.GetString(sceneRoot, "defaultEnemyLootTableId", string.Empty),
+                blueTeam = ParsePlayerTeam(playerRoot, sceneRoot, catalog),
+                redTeam = ParseTeam(sceneRoot, "redTeam", catalog)
             };
 
             config.EnsureDefaults();
             if (CountConfiguredUnits(config) == 0)
             {
-                var label = string.IsNullOrWhiteSpace(configName) ? configAsset.name : configName;
+                var label = string.IsNullOrWhiteSpace(configName) ? sceneConfigAsset.name : configName;
                 Debug.LogWarning("Scene config for " + label + " resolved to zero units. Using the built-in fallback config.");
                 return SceneBattleConfig.CreateDefault(catalog);
             }
 
             return config;
+        }
+
+        private static TeamConfig ParsePlayerTeam(Dictionary<string, object> playerRoot, Dictionary<string, object> sceneRoot, GameDataCatalog catalog)
+        {
+            if (playerRoot != null)
+            {
+                if (TryParseTopLevelUnits(playerRoot, catalog, out var topLevelUnits))
+                {
+                    return new TeamConfig { units = topLevelUnits };
+                }
+
+                return ParseTeam(playerRoot, "blueTeam", catalog);
+            }
+
+            return ParseTeam(sceneRoot, "blueTeam", catalog);
+        }
+
+        private static bool TryParseTopLevelUnits(Dictionary<string, object> root, GameDataCatalog catalog, out UnitSpawnConfig[] units)
+        {
+            units = Array.Empty<UnitSpawnConfig>();
+            if (root == null || !root.ContainsKey("units"))
+            {
+                return false;
+            }
+
+            var entries = JsonDataHelper.GetArray(root, "units");
+            var resolvedUnits = new List<UnitSpawnConfig>();
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entryObject = JsonDataHelper.AsObject(entries[i]);
+                if (entryObject == null)
+                {
+                    continue;
+                }
+
+                if (TryBuildUnitSpawnConfig(entryObject, catalog, out var unitSpawnConfig))
+                {
+                    resolvedUnits.Add(unitSpawnConfig);
+                }
+            }
+
+            units = resolvedUnits.ToArray();
+            return true;
         }
 
         private static FormationConfig ParseFormation(Dictionary<string, object> root)
@@ -130,6 +178,11 @@ namespace AutoBattler
             return new TeamConfig { units = units.ToArray() };
         }
 
+        public static bool TryBuildUnitSpawnConfigFromSource(Dictionary<string, object> source, GameDataCatalog catalog, out UnitSpawnConfig unitSpawnConfig)
+        {
+            return TryBuildUnitSpawnConfig(source, catalog, out unitSpawnConfig);
+        }
+
         private static bool TryBuildUnitSpawnConfig(Dictionary<string, object> source, GameDataCatalog catalog, out UnitSpawnConfig unitSpawnConfig)
         {
             unitSpawnConfig = null;
@@ -150,6 +203,7 @@ namespace AutoBattler
             var resolvedTerrainSpeedProfile = ResolveTerrainSpeedProfile(template, source);
             var resolvedTerrainPathCostProfile = ResolveTerrainPathCostProfile(template, source);
             var definition = new UnitDefinition(
+                templateId,
                 string.IsNullOrWhiteSpace(resolvedName) ? template.UnitName : resolvedName,
                 template.UnitType,
                 Mathf.Max(1, JsonDataHelper.GetModifiedInt(source, "maxHealth", template.MaxHealth)),
