@@ -1,0 +1,11 @@
+{
+  "maps": [
+    {
+      "mapDefinitionId": "sample_operation",
+      "displayName": "Sample Operation",
+      "sceneName": "SampleScene",
+      "description": "Secure the battlefield and hold the line long enough to get your troops home.",
+      "tier": 1
+    }
+  ]
+}

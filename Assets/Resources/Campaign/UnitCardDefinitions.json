@@ -1,0 +1,10 @@
+{
+  "unitCards": [
+    {
+      "unitCardDefinitionId": "guard_infantry_card",
+      "displayName": "Guard Infantry",
+      "baseTemplateId": "Guard Infantry",
+      "purchaseCostGold": 10
+    }
+  ]
+}
