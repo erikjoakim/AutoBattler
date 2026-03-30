@@ -9,7 +9,7 @@
     {
       "terrainLayer": "GrassTL",
       "terrainType": "Grass",
-      "navArea": "Walkable"
+      "navArea": "GrassArea"
     },
     {
       "terrainLayer": "RoadTL",
@@ -42,10 +42,16 @@
         "unitName": "Blue Shellers",
         "unitType": "Assault Tank",
         "terrainSpeedModifiers": {
-          "Road": 10.0,
+          "Road": 4.0,
           "Grass": 1.0,
           "Mud": 0.9,
           "Rock": 1.0
+        },
+        "terrainPathCosts": {
+          "Road": 1.0,
+          "Grass": 5.0,
+          "Mud": 7.0,
+          "Rock": 5.0
         },
         "ammunition": [
           {
@@ -71,6 +77,11 @@
         "moveReliability": "*0.96",
         "terrainSpeedModifiers": {
           "Road": "*1.1"
+        },
+        "terrainPathCosts": {
+          "Road": 2.0,
+          "Grass": 1.5,
+          "Mud": 2.0
         }
       }
     ]
@@ -108,6 +119,11 @@
         "moveReliability": "*0.8",
         "terrainSpeedModifiers": {
           "Mud": "*1.15"
+        },
+        "terrainPathCosts": {
+          "Road": 1.0,
+          "Grass": 1.4,
+          "Mud": 1.8
         }
       }
     ]

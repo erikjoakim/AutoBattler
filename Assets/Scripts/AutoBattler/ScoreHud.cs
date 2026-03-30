@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace AutoBattler
 {
@@ -9,9 +10,15 @@ namespace AutoBattler
         private GUIStyle splashTitleStyle;
         private GUIStyle splashMessageStyle;
         private GUIStyle splashPanelStyle;
+        private GUIStyle splashButtonStyle;
 
         private void OnGUI()
         {
+            if (string.Equals(SceneManager.GetActiveScene().name, "HeadQuarter", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             EnsureStyles();
 
             GUILayout.BeginArea(new Rect(16f, 16f, 300f, 150f), GUI.skin.box);
@@ -24,18 +31,18 @@ namespace AutoBattler
                 return;
             }
 
-            GUILayout.Label(
-                "Blue  score: " + ScoreManager.Instance.GetScore(Team.Blue) + "  alive: " + BattleUnitRegistry.CountAlive(Team.Blue),
-                bodyStyle);
-            GUILayout.Label(
-                "Red   score: " + ScoreManager.Instance.GetScore(Team.Red) + "  alive: " + BattleUnitRegistry.CountAlive(Team.Red),
-                bodyStyle);
+            var blueSummary = "Blue  score: " + ScoreManager.Instance.GetScore(Team.Blue) + "  alive: " + BattleUnitRegistry.CountAlive(Team.Blue);
+            var redSummary = "Red   score: " + ScoreManager.Instance.GetScore(Team.Red) + "  alive: " + BattleUnitRegistry.CountAlive(Team.Red);
+            GUILayout.Label(blueSummary, bodyStyle);
+            GUILayout.Label(redSummary, bodyStyle);
 
             GUILayout.Space(8f);
             if (BattleScenario.Instance != null)
             {
-                GUILayout.Label("Mission: " + BattleScenario.Instance.MissionName, bodyStyle);
-                GUILayout.Label("Objective: " + BattleScenario.Instance.GetObjectiveSummary(), bodyStyle);
+                var missionSummary = "Mission: " + BattleScenario.Instance.MissionName;
+                var objectiveSummary = "Objective: " + BattleScenario.Instance.GetObjectiveSummary();
+                GUILayout.Label(missionSummary, bodyStyle);
+                GUILayout.Label(objectiveSummary, bodyStyle);
                 var progressSummary = BattleScenario.Instance.GetProgressSummary();
                 if (!string.IsNullOrWhiteSpace(progressSummary))
                 {
@@ -44,11 +51,13 @@ namespace AutoBattler
             }
             else if (BattleObjectiveManager.Instance != null)
             {
-                GUILayout.Label("Objective: " + BattleObjectiveManager.Instance.GetObjectiveSummary(), bodyStyle);
+                var objectiveSummary = "Objective: " + BattleObjectiveManager.Instance.GetObjectiveSummary();
+                GUILayout.Label(objectiveSummary, bodyStyle);
             }
             else
             {
-                GUILayout.Label("Objective: eliminate all enemies", bodyStyle);
+                const string objectiveSummary = "Objective: eliminate all enemies";
+                GUILayout.Label(objectiveSummary, bodyStyle);
             }
 
             if (BattleStateManager.Instance != null && BattleStateManager.Instance.IsBattleOver)
@@ -104,6 +113,21 @@ namespace AutoBattler
                 fontSize = 18,
                 padding = new RectOffset(24, 24, 24, 24)
             };
+
+            splashButtonStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 16,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+            splashButtonStyle.normal.textColor = Color.white;
+            splashButtonStyle.hover.textColor = Color.white;
+            splashButtonStyle.active.textColor = Color.white;
+            splashButtonStyle.focused.textColor = Color.white;
+            splashButtonStyle.onNormal.textColor = Color.white;
+            splashButtonStyle.onHover.textColor = Color.white;
+            splashButtonStyle.onActive.textColor = Color.white;
+            splashButtonStyle.onFocused.textColor = Color.white;
         }
 
         private void DrawBattleResultSplash()
@@ -124,7 +148,10 @@ namespace AutoBattler
                 : new Color(1f, 0.42f, 0.42f);
             var overlayRect = new Rect(0f, 0f, Screen.width, Screen.height);
             var panelWidth = Mathf.Min(520f, Screen.width - 48f);
-            var panelHeight = 220f;
+            var showReturnButton = CampaignRuntimeContext.Instance != null
+                && CampaignRuntimeContext.Instance.HasActiveMission
+                && BattleCampaignBridge.Instance != null;
+            var panelHeight = showReturnButton ? 272f : 220f;
             var panelRect = new Rect(
                 (Screen.width - panelWidth) * 0.5f,
                 (Screen.height - panelHeight) * 0.5f,
@@ -137,6 +164,7 @@ namespace AutoBattler
 
             GUI.color = new Color(0.12f, 0.12f, 0.12f, 0.9f);
             GUI.Box(panelRect, GUIContent.none, splashPanelStyle);
+            GUI.color = previousColor;
 
             var previousTitleColor = splashTitleStyle.normal.textColor;
             var previousMessageColor = splashMessageStyle.normal.textColor;
@@ -154,6 +182,14 @@ namespace AutoBattler
             GUILayout.Label(battleState.ResultMessage, splashMessageStyle);
             GUILayout.Space(10f);
             GUILayout.Label("Left-click units to inspect final stats.", bodyStyle);
+            if (showReturnButton)
+            {
+                GUILayout.Space(18f);
+                if (GUILayout.Button("Return To HQ", splashButtonStyle, GUILayout.Height(38f)))
+                {
+                    BattleCampaignBridge.Instance.RequestReturnToHeadQuarter();
+                }
+            }
             GUILayout.FlexibleSpace();
             GUILayout.EndArea();
 

@@ -14,6 +14,7 @@ namespace AutoBattler
         }
 
         public IReadOnlyDictionary<string, float> Modifiers => modifiers;
+        public bool HasOverrides => modifiers.Count > 0;
 
         public float GetModifier(string terrainType)
         {

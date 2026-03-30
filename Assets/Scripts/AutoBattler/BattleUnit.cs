@@ -6,6 +6,8 @@ namespace AutoBattler
 {
     public sealed class BattleUnit : MonoBehaviour
     {
+        public static event Action<BattleUnit, BattleUnit> UnitDied;
+
         private UnitDefinition unitDefinition;
         private int[] ammunitionCounts;
         private int currentHealth;
@@ -32,7 +34,9 @@ namespace AutoBattler
         public float CurrentVelocity => navigationAgent != null ? navigationAgent.velocity.magnitude : 0f;
         public bool IsMovementTemporarilyBlocked => IsMovementBroken();
         public string NavigationAgentTypeName => navigationAgent != null ? NavMesh.GetSettingsNameFromID(navigationAgent.agentTypeID) : string.Empty;
+        public int NavigationAgentTypeId => navigationAgent != null ? navigationAgent.agentTypeID : NavMeshAgentTypeResolver.GetDefaultAgentTypeId();
         public string NavigationPathStatus => navigationAgent != null && navigationAgent.hasPath ? navigationAgent.pathStatus.ToString() : "NoPath";
+        public string OwnedUnitCardId { get; private set; }
 
         public void Initialize(UnitDefinition definition, Team team, MissionType mission, Vector3 homePosition, Vector3 objective)
         {
@@ -55,6 +59,7 @@ namespace AutoBattler
             navigationAgent = GetOrCreateNavigationAgent();
 
             SnapToGround(homePosition);
+            ReapplyNavigationCosts();
             BattleUnitRegistry.Register(this);
         }
 
@@ -106,6 +111,11 @@ namespace AutoBattler
             {
                 Die(attacker);
             }
+        }
+
+        public void LinkOwnedUnitCard(string ownedUnitCardId)
+        {
+            OwnedUnitCardId = ownedUnitCardId;
         }
 
         private void Engage(BattleUnit target)
@@ -360,6 +370,7 @@ namespace AutoBattler
                 ScoreManager.Instance.AddPoint(attacker.Team);
             }
 
+            UnitDied?.Invoke(this, attacker);
             Destroy(gameObject);
         }
 
@@ -433,10 +444,7 @@ namespace AutoBattler
             agent.baseOffset = groundOffset;
             agent.radius = GetNavigationRadius();
             agent.height = Mathf.Max(1f, groundOffset * 2f);
-            if (BattleNavigationManager.Instance != null)
-            {
-                BattleNavigationManager.Instance.ConfigureAgent(agent, unitDefinition);
-            }
+            ReapplyNavigationCosts(agent);
 
             return agent;
         }
@@ -476,6 +484,21 @@ namespace AutoBattler
             }
 
             return navigationAgent.Warp(hitPosition);
+        }
+
+        private void ReapplyNavigationCosts()
+        {
+            ReapplyNavigationCosts(navigationAgent);
+        }
+
+        private void ReapplyNavigationCosts(NavMeshAgent agent)
+        {
+            if (agent == null || BattleNavigationManager.Instance == null)
+            {
+                return;
+            }
+
+            BattleNavigationManager.Instance.ConfigureAgent(agent, unitDefinition);
         }
 
         private bool CanUseNavigation()
@@ -613,6 +636,36 @@ namespace AutoBattler
             return ammunitionCounts[ammoIndex];
         }
 
+        public float GetAreaCost(int areaIndex)
+        {
+            if (navigationAgent == null)
+            {
+                return 1f;
+            }
+
+            return navigationAgent.GetAreaCost(areaIndex);
+        }
+
+        public bool TryCalculatePathTo(Vector3 destination, out NavMeshPathStatus pathStatus, out float pathLength)
+        {
+            pathStatus = NavMeshPathStatus.PathInvalid;
+            pathLength = 0f;
+            if (!CanUseNavigation())
+            {
+                return false;
+            }
+
+            var path = new NavMeshPath();
+            if (!navigationAgent.CalculatePath(destination, path))
+            {
+                return false;
+            }
+
+            pathStatus = path.status;
+            pathLength = CalculatePathLength(path);
+            return true;
+        }
+
         private void OnDestroy()
         {
             BattleUnitRegistry.Unregister(this);
@@ -665,6 +718,22 @@ namespace AutoBattler
             var seed = Mathf.Abs((referencePosition.x * 11.3f) + (referencePosition.z * 7.7f) + ((int)team * 3.1f));
             var raw = Mathf.FloorToInt((seed - Mathf.Floor(seed)) * 31f);
             return raw - 15;
+        }
+
+        private static float CalculatePathLength(NavMeshPath path)
+        {
+            if (path == null || path.corners == null || path.corners.Length < 2)
+            {
+                return 0f;
+            }
+
+            var length = 0f;
+            for (var i = 1; i < path.corners.Length; i++)
+            {
+                length += Vector3.Distance(path.corners[i - 1], path.corners[i]);
+            }
+
+            return length;
         }
     }
 }

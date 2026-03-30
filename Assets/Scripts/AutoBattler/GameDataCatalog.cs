@@ -53,6 +53,7 @@ namespace AutoBattler
                         0.94f,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.3f), ("Grass", 1f), ("Mud", 0.65f), ("Rock", 0.75f)),
+                        CreateTerrainSpeedProfile(("Road", 1f), ("Grass", 2.5f), ("Mud", 5f), ("Rock", 3.5f)),
                         new[]
                         {
                             CreateLoadout(ammoTemplates["Tank Cannon"], -1),
@@ -75,6 +76,7 @@ namespace AutoBattler
                         0.9f,
                         "TankAgent",
                         CreateTerrainSpeedProfile(("Road", 1.35f), ("Grass", 1f), ("Mud", 0.6f), ("Rock", 0.75f)),
+                        CreateTerrainSpeedProfile(("Road", 1f), ("Grass", 3f), ("Mud", 6f), ("Rock", 4f)),
                         new[]
                         {
                             CreateLoadout(ammoTemplates["Tank Cannon"], -1, reloadTime: 1.7f),
@@ -97,6 +99,7 @@ namespace AutoBattler
                         0.97f,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.15f), ("Grass", 1f), ("Mud", 0.85f), ("Rock", 0.95f)),
+                        CreateTerrainSpeedProfile(("Road", 1f), ("Grass", 1.4f), ("Mud", 2.2f), ("Rock", 1.8f)),
                         new[]
                         {
                             CreateLoadout(ammoTemplates["Rifle Burst"], -1),
@@ -119,6 +122,7 @@ namespace AutoBattler
                         0.95f,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.2f), ("Grass", 1f), ("Mud", 0.9f), ("Rock", 1f)),
+                        CreateTerrainSpeedProfile(("Road", 1f), ("Grass", 1.3f), ("Mud", 2f), ("Rock", 1.4f)),
                         new[]
                         {
                             CreateLoadout(ammoTemplates["Rifle Burst"], -1, reloadTime: 1f),
@@ -231,6 +235,7 @@ namespace AutoBattler
             float moveReliability,
             string navigationAgentType,
             TerrainSpeedProfile terrainSpeedProfile,
+            TerrainSpeedProfile terrainPathCostProfile,
             GameUnitAmmoLoadout[] ammunitionLoadout)
         {
             UnitTypeKey = unitTypeKey;
@@ -246,6 +251,7 @@ namespace AutoBattler
             MoveReliability = moveReliability;
             NavigationAgentType = navigationAgentType;
             TerrainSpeedProfile = terrainSpeedProfile ?? TerrainSpeedProfile.Empty;
+            TerrainPathCostProfile = terrainPathCostProfile ?? TerrainSpeedProfile.Empty;
             this.ammunitionLoadout = ammunitionLoadout ?? Array.Empty<GameUnitAmmoLoadout>();
         }
 
@@ -262,6 +268,7 @@ namespace AutoBattler
         public float MoveReliability { get; }
         public string NavigationAgentType { get; }
         public TerrainSpeedProfile TerrainSpeedProfile { get; }
+        public TerrainSpeedProfile TerrainPathCostProfile { get; }
 
         public UnitDefinition BuildDefinition(string resolvedUnitName, AmmoDefinition[] ammunition, int[] ammunitionCounts)
         {
@@ -277,6 +284,7 @@ namespace AutoBattler
                 MoveReliability,
                 NavigationAgentType,
                 TerrainSpeedProfile,
+                TerrainPathCostProfile,
                 ammunitionCounts,
                 ammunition);
         }

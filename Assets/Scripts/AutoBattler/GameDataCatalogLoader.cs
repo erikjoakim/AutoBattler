@@ -87,6 +87,8 @@ namespace AutoBattler
                 }
 
                 var ammoLoadout = ParseAmmunitionLoadout(item, ammoTemplates);
+                var terrainSpeedProfile = ParseTerrainSpeedProfile(item);
+                var terrainPathCostProfile = ParseTerrainPathCostProfile(item);
                 templates[unitTypeKey] = new GameUnitTemplate(
                     unitTypeKey,
                     JsonDataHelper.GetString(item, "unitName", unitTypeKey),
@@ -100,7 +102,8 @@ namespace AutoBattler
                     Mathf.Clamp01(JsonDataHelper.GetFloat(item, "fireReliability", 1f)),
                     Mathf.Clamp01(JsonDataHelper.GetFloat(item, "moveReliability", 1f)),
                     JsonDataHelper.GetString(item, "navigationAgentType", string.Empty),
-                    ParseTerrainSpeedProfile(item),
+                    terrainSpeedProfile,
+                    terrainPathCostProfile,
                     ammoLoadout.ToArray());
             }
 
@@ -182,6 +185,11 @@ namespace AutoBattler
         private static TerrainSpeedProfile ParseTerrainSpeedProfile(Dictionary<string, object> source)
         {
             return TerrainSpeedProfile.Empty.WithOverrides(JsonDataHelper.AsObject(source.TryGetValue("terrainSpeedModifiers", out var value) ? value : null));
+        }
+
+        private static TerrainSpeedProfile ParseTerrainPathCostProfile(Dictionary<string, object> source)
+        {
+            return TerrainSpeedProfile.Empty.WithOverrides(JsonDataHelper.AsObject(source.TryGetValue("terrainPathCosts", out var value) ? value : null));
         }
     }
 }

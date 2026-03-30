@@ -148,6 +148,7 @@ namespace AutoBattler
 
             var resolvedAmmo = ResolveAmmunition(template, source, out var resolvedAmmoCounts);
             var resolvedTerrainSpeedProfile = ResolveTerrainSpeedProfile(template, source);
+            var resolvedTerrainPathCostProfile = ResolveTerrainPathCostProfile(template, source);
             var definition = new UnitDefinition(
                 string.IsNullOrWhiteSpace(resolvedName) ? template.UnitName : resolvedName,
                 template.UnitType,
@@ -160,6 +161,7 @@ namespace AutoBattler
                 Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(source, "moveReliability", template.MoveReliability)),
                 JsonDataHelper.GetString(source, "navigationAgentType", template.NavigationAgentType),
                 resolvedTerrainSpeedProfile,
+                resolvedTerrainPathCostProfile,
                 resolvedAmmoCounts,
                 resolvedAmmo);
 
@@ -177,6 +179,12 @@ namespace AutoBattler
         {
             var overrides = JsonDataHelper.AsObject(source.TryGetValue("terrainSpeedModifiers", out var value) ? value : null);
             return template.TerrainSpeedProfile.WithOverrides(overrides);
+        }
+
+        private static TerrainSpeedProfile ResolveTerrainPathCostProfile(GameUnitTemplate template, Dictionary<string, object> source)
+        {
+            var overrides = JsonDataHelper.AsObject(source.TryGetValue("terrainPathCosts", out var value) ? value : null);
+            return template.TerrainPathCostProfile.WithOverrides(overrides);
         }
 
         private static AmmoDefinition[] ResolveAmmunition(GameUnitTemplate template, Dictionary<string, object> source, out int[] resolvedAmmoCounts)

@@ -1,19 +1,42 @@
 using System.Text;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 namespace AutoBattler
 {
     public sealed class UnitInspectorHud : MonoBehaviour
     {
+        private struct TerrainProbeInfo
+        {
+            public bool IsValid;
+            public Vector3 Position;
+            public string TerrainType;
+            public string NavAreaName;
+            public int NavAreaIndex;
+            public NavMeshPathStatus PathStatus;
+            public float PathLength;
+            public bool HasPath;
+            public float AreaCost;
+        }
+
         private readonly StringBuilder builder = new StringBuilder(512);
         private BattleUnit selectedUnit;
+        private TerrainProbeInfo terrainProbe;
         private GUIStyle headerStyle;
         private GUIStyle bodyStyle;
         private Mouse mouse;
 
         private void Update()
         {
+            if (string.Equals(SceneManager.GetActiveScene().name, "HeadQuarter", System.StringComparison.OrdinalIgnoreCase))
+            {
+                selectedUnit = null;
+                terrainProbe = default;
+                return;
+            }
+
             if (selectedUnit != null && !selectedUnit.IsAlive)
             {
                 selectedUnit = null;
@@ -27,17 +50,23 @@ namespace AutoBattler
 
             if (mouse.leftButton.wasPressedThisFrame)
             {
-                SelectUnitUnderCursor();
+                InspectUnderCursor();
             }
             else if (mouse.rightButton.wasPressedThisFrame)
             {
                 selectedUnit = null;
+                terrainProbe = default;
             }
         }
 
         private void OnGUI()
         {
-            if (selectedUnit == null || selectedUnit.Definition == null)
+            if (string.Equals(SceneManager.GetActiveScene().name, "HeadQuarter", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if ((selectedUnit == null || selectedUnit.Definition == null) && !terrainProbe.IsValid)
             {
                 return;
             }
@@ -46,34 +75,68 @@ namespace AutoBattler
 
             var area = new Rect(Screen.width - 376f, 16f, 360f, Screen.height - 32f);
             GUILayout.BeginArea(area, GUI.skin.box);
-            GUILayout.Label(selectedUnit.Definition.UnitName, headerStyle);
-            GUILayout.Label(BuildStatsText(selectedUnit), bodyStyle);
+            var title = selectedUnit != null && selectedUnit.Definition != null
+                ? selectedUnit.Definition.UnitName
+                : "Terrain Probe";
+            var bodyText = BuildStatsText();
+            GUILayout.Label(title, headerStyle);
+            GUILayout.Label(bodyText, bodyStyle);
             GUILayout.EndArea();
         }
 
-        private void SelectUnitUnderCursor()
+        private void InspectUnderCursor()
         {
             if (Camera.main == null || mouse == null)
             {
                 selectedUnit = null;
+                terrainProbe = default;
                 return;
             }
 
             var ray = Camera.main.ScreenPointToRay(mouse.position.ReadValue());
             if (!Physics.Raycast(ray, out var hit, 500f))
             {
-                selectedUnit = null;
+                terrainProbe = default;
                 return;
             }
 
-            selectedUnit = hit.collider.GetComponentInParent<BattleUnit>();
+            var hitUnit = hit.collider.GetComponentInParent<BattleUnit>();
+            if (hitUnit != null)
+            {
+                selectedUnit = hitUnit;
+                terrainProbe = default;
+                LogCurrentSelection();
+                return;
+            }
+
+            UpdateTerrainProbe(hit.point);
+            LogCurrentSelection();
         }
 
-        private string BuildStatsText(BattleUnit unit)
+        private string BuildStatsText()
         {
             builder.Clear();
-            var definition = unit.Definition;
+            if (selectedUnit != null && selectedUnit.Definition != null)
+            {
+                AppendUnitStats(selectedUnit);
+            }
 
+            if (terrainProbe.IsValid)
+            {
+                if (builder.Length > 0)
+                {
+                    builder.AppendLine();
+                }
+
+                AppendTerrainProbeStats();
+            }
+
+            return builder.ToString();
+        }
+
+        private void AppendUnitStats(BattleUnit unit)
+        {
+            var definition = unit.Definition;
             builder.AppendLine("Team: " + unit.Team);
             builder.AppendLine("Mission: " + unit.Mission);
             builder.AppendLine("Class: " + definition.UnitType);
@@ -84,6 +147,9 @@ namespace AutoBattler
             builder.AppendLine("Move Blocked: " + (unit.IsMovementTemporarilyBlocked ? "yes" : "no"));
             builder.AppendLine("Nav Agent: " + unit.NavigationAgentTypeName);
             builder.AppendLine("Path: " + unit.NavigationPathStatus);
+            builder.AppendLine(
+                "Path Costs: Grass " + definition.TerrainPathCostProfile.GetModifier("Grass").ToString("0.0")
+                + "  Road " + definition.TerrainPathCostProfile.GetModifier("Road").ToString("0.0"));
             builder.AppendLine("Vision: " + definition.VisionRange.ToString("0.0"));
             builder.AppendLine("Reload Remaining: " + unit.RemainingReloadTime.ToString("0.0"));
             builder.AppendLine("Accuracy: " + ToPercent(definition.Accuracy));
@@ -96,7 +162,7 @@ namespace AutoBattler
             if (ammunition == null || ammunition.Length == 0)
             {
                 builder.AppendLine("  None");
-                return builder.ToString();
+                return;
             }
 
             for (var i = 0; i < ammunition.Length; i++)
@@ -118,8 +184,74 @@ namespace AutoBattler
                     "    Acc " + ToPercent(ammo.Accuracy)
                     + "  DmgRel " + ToPercent(ammo.DamageReliability));
             }
+        }
 
-            return builder.ToString();
+        private void AppendTerrainProbeStats()
+        {
+            builder.AppendLine("Terrain Probe:");
+            builder.AppendLine("Pos: " + terrainProbe.Position.x.ToString("0.0") + ", " + terrainProbe.Position.z.ToString("0.0"));
+            builder.AppendLine("Terrain: " + terrainProbe.TerrainType);
+            builder.AppendLine("Nav Area: " + terrainProbe.NavAreaName + " (" + terrainProbe.NavAreaIndex + ")");
+
+            if (selectedUnit != null)
+            {
+                builder.AppendLine("Area Cost: " + terrainProbe.AreaCost.ToString("0.0"));
+                builder.AppendLine("Path To Probe: " + (terrainProbe.HasPath ? terrainProbe.PathStatus.ToString() : "Unavailable"));
+                if (terrainProbe.HasPath)
+                {
+                    builder.AppendLine("Path Length: " + terrainProbe.PathLength.ToString("0.0"));
+                }
+            }
+        }
+
+        private void UpdateTerrainProbe(Vector3 hitPoint)
+        {
+            var navigationManager = BattleNavigationManager.Instance;
+            terrainProbe = new TerrainProbeInfo
+            {
+                IsValid = true,
+                Position = hitPoint,
+                TerrainType = navigationManager != null ? navigationManager.GetTerrainType(hitPoint) : "Unknown",
+                NavAreaName = "Unknown",
+                NavAreaIndex = -1,
+                PathStatus = NavMeshPathStatus.PathInvalid,
+                PathLength = 0f,
+                HasPath = false,
+                AreaCost = 1f
+            };
+
+            if (selectedUnit == null)
+            {
+                return;
+            }
+
+            if (navigationManager != null
+                && navigationManager.TryGetNavArea(hitPoint, selectedUnit.NavigationAgentTypeId, out var areaIndex, out var areaName))
+            {
+                terrainProbe.NavAreaIndex = areaIndex;
+                terrainProbe.NavAreaName = areaName;
+                terrainProbe.AreaCost = selectedUnit.GetAreaCost(areaIndex);
+            }
+
+            if (selectedUnit.TryCalculatePathTo(hitPoint, out var pathStatus, out var pathLength))
+            {
+                terrainProbe.HasPath = true;
+                terrainProbe.PathStatus = pathStatus;
+                terrainProbe.PathLength = pathLength;
+            }
+        }
+
+        private void LogCurrentSelection()
+        {
+            if (selectedUnit == null && !terrainProbe.IsValid)
+            {
+                return;
+            }
+
+            var title = selectedUnit != null && selectedUnit.Definition != null
+                ? selectedUnit.Definition.UnitName
+                : "Terrain Probe";
+            UiDebugConsole.LogIfEnabled("InspectorClick", title + "\n" + BuildStatsText());
         }
 
         private static string ToPercent(float value)

@@ -71,14 +71,14 @@ namespace AutoBattler
     {
         public float sampleCellSize = 2f;
         public string defaultTerrainType = "Grass";
-        public string defaultNavArea = "Walkable";
+        public string defaultNavArea = "GrassArea";
         public TerrainLayerMappingConfig[] mappings;
 
         public void Sanitize()
         {
             sampleCellSize = Mathf.Max(0.5f, sampleCellSize);
             defaultTerrainType = string.IsNullOrWhiteSpace(defaultTerrainType) ? "Grass" : defaultTerrainType;
-            defaultNavArea = string.IsNullOrWhiteSpace(defaultNavArea) ? "Walkable" : defaultNavArea;
+            defaultNavArea = string.IsNullOrWhiteSpace(defaultNavArea) ? "GrassArea" : defaultNavArea;
             mappings ??= Array.Empty<TerrainLayerMappingConfig>();
         }
     }
@@ -88,7 +88,7 @@ namespace AutoBattler
     {
         public string terrainLayer;
         public string terrainType = "Grass";
-        public string navArea = "Walkable";
+        public string navArea = "GrassArea";
     }
 
     [Serializable]
@@ -127,6 +127,7 @@ namespace AutoBattler
         public int count;
         public MissionType mission;
         public UnitDefinition definition;
+        public string ownedUnitCardId;
 
         public static UnitSpawnConfig FromTemplate(GameDataCatalog catalog, string templateId, string unitName, int count = 1)
         {

@@ -19,6 +19,7 @@ namespace AutoBattler
         [SerializeField] private AmmoDefinition[] ammunition;
         [SerializeField] private int[] ammunitionCounts;
         private readonly TerrainSpeedProfile terrainSpeedProfile;
+        private readonly TerrainSpeedProfile terrainPathCostProfile;
 
         public UnitDefinition(
             string unitName,
@@ -32,6 +33,7 @@ namespace AutoBattler
             float moveReliability,
             string navigationAgentType,
             TerrainSpeedProfile terrainSpeedProfile,
+            TerrainSpeedProfile terrainPathCostProfile,
             int[] ammunitionCounts,
             params AmmoDefinition[] ammunition)
         {
@@ -46,6 +48,7 @@ namespace AutoBattler
             this.moveReliability = moveReliability;
             this.navigationAgentType = navigationAgentType;
             this.terrainSpeedProfile = terrainSpeedProfile ?? TerrainSpeedProfile.Empty;
+            this.terrainPathCostProfile = terrainPathCostProfile ?? TerrainSpeedProfile.Empty;
             this.ammunition = ammunition;
             this.ammunitionCounts = ammunitionCounts ?? Array.Empty<int>();
         }
@@ -63,5 +66,6 @@ namespace AutoBattler
         public AmmoDefinition[] Ammunition => ammunition;
         public int[] AmmunitionCounts => ammunitionCounts;
         public TerrainSpeedProfile TerrainSpeedProfile => terrainSpeedProfile;
+        public TerrainSpeedProfile TerrainPathCostProfile => terrainPathCostProfile;
     }
 }

@@ -1,10 +1,12 @@
 using System;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace AutoBattler
 {
     public sealed class AutoBattlerBootstrap : MonoBehaviour
     {
+        private const string HeadQuarterSceneName = "HeadQuarter";
         private const string BlueStartPointName = "StartPoint1";
         private const string RedStartPointName = "StartPoint2";
         private const string FallbackLayoutRootName = "FallbackBattleLayout";
@@ -12,6 +14,11 @@ namespace AutoBattler
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateBootstrap()
         {
+            if (string.Equals(SceneManager.GetActiveScene().name, HeadQuarterSceneName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             if (FindAnyObjectByType<AutoBattlerBootstrap>() != null)
             {
                 return;
@@ -23,11 +30,18 @@ namespace AutoBattler
 
         private void Start()
         {
+            if (string.Equals(SceneManager.GetActiveScene().name, HeadQuarterSceneName, StringComparison.OrdinalIgnoreCase))
+            {
+                Destroy(gameObject);
+                return;
+            }
+
             EnsureSupportObjects();
             ResetBattleState();
 
             var scenario = ResolveScenario();
             var config = scenario.LoadSceneConfig();
+            CampaignRuntimeContext.Instance?.ApplyPreparedMission(config, SceneManager.GetActiveScene().name);
             if (BattleNavigationManager.Instance != null)
             {
                 BattleNavigationManager.Instance.RebuildNavigation(config);
@@ -76,6 +90,13 @@ namespace AutoBattler
             if (FindAnyObjectByType<BattleNavigationManager>() == null)
             {
                 ScoreManager.Instance.gameObject.AddComponent<BattleNavigationManager>();
+            }
+
+            if (CampaignRuntimeContext.Instance != null
+                && CampaignRuntimeContext.Instance.HasActiveMission
+                && FindAnyObjectByType<BattleCampaignBridge>() == null)
+            {
+                ScoreManager.Instance.gameObject.AddComponent<BattleCampaignBridge>();
             }
         }
 
@@ -170,7 +191,7 @@ namespace AutoBattler
                     var area = startAreas[areaIndex];
                     var areaLocalIndex = areaSpawnCounts[areaIndex]++;
                     var worldPosition = area.GetSpawnPosition(areaLocalIndex, areaUnitTotals[areaIndex], formation);
-                    SpawnUnit(parent, definition, team, mission, worldPosition, targetPoint);
+                    SpawnUnit(parent, definition, team, mission, worldPosition, targetPoint, unitConfig.ownedUnitCardId);
                     spawnedCount++;
                 }
             }
@@ -345,13 +366,18 @@ namespace AutoBattler
             Team team,
             MissionType mission,
             Vector3 position,
-            Vector3 targetPoint)
+            Vector3 targetPoint,
+            string ownedUnitCardId = null)
         {
             var unitObject = UnitFactory.CreateUnitObject(definition, team, parent, position);
             unitObject.name = team + " " + definition.UnitName + " " + mission;
 
             var unit = unitObject.AddComponent<BattleUnit>();
             unit.Initialize(definition, team, mission, position, targetPoint);
+            if (!string.IsNullOrWhiteSpace(ownedUnitCardId))
+            {
+                unit.LinkOwnedUnitCard(ownedUnitCardId);
+            }
         }
 
         private void ValidateSceneLayout(SceneLayout layout, SceneBattleConfig config)

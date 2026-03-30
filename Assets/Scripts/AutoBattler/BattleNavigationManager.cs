@@ -10,6 +10,7 @@ namespace AutoBattler
         public static BattleNavigationManager Instance { get; private set; }
 
         private readonly Dictionary<int, NavMeshSurface> navMeshSurfaces = new Dictionary<int, NavMeshSurface>();
+        private readonly Dictionary<int, string> areaNames = new Dictionary<int, string>();
         private Transform surfaceRoot;
         private Transform modifierVolumeRoot;
         private TerrainMovementMap terrainMovementMap;
@@ -33,6 +34,8 @@ namespace AutoBattler
             EnsureSurfaceRoot();
             EnsureModifierVolumeRoot();
 
+            RebuildAreaNames(config);
+            var defaultAreaIndex = ResolveDefaultAreaIndex(config);
             terrainMovementMap = TerrainMovementMap.Build(Terrain.activeTerrain, config != null ? config.terrainMovement : null);
             RebuildModifierVolumes();
 
@@ -42,6 +45,7 @@ namespace AutoBattler
             foreach (var agentTypeId in requiredAgentTypeIds)
             {
                 var surface = GetOrCreateSurface(agentTypeId);
+                surface.defaultArea = defaultAreaIndex;
                 surface.RemoveData();
                 surface.BuildNavMesh();
             }
@@ -60,11 +64,10 @@ namespace AutoBattler
             }
 
             var bindings = terrainMovementMap.AreaBindings;
-            var fastestModifier = definition.TerrainSpeedProfile.GetMaxModifier();
             for (var i = 0; i < bindings.Count; i++)
             {
                 var binding = bindings[i];
-                agent.SetAreaCost(binding.AreaIndex, ConvertSpeedModifierToAreaCost(definition.TerrainSpeedProfile.GetModifier(binding.TerrainType), fastestModifier));
+                agent.SetAreaCost(binding.AreaIndex, ResolveAreaCost(definition, binding.TerrainType));
             }
         }
 
@@ -80,6 +83,32 @@ namespace AutoBattler
                 : "Grass";
 
             return definition.TerrainSpeedProfile.GetModifier(terrainType);
+        }
+
+        public string GetTerrainType(Vector3 position)
+        {
+            return terrainMovementMap != null ? terrainMovementMap.GetTerrainType(position) : "Grass";
+        }
+
+        public bool TryGetNavArea(Vector3 position, int agentTypeId, out int areaIndex, out string areaName)
+        {
+            areaIndex = 0;
+            areaName = GetAreaName(areaIndex);
+
+            var filter = new NavMeshQueryFilter
+            {
+                agentTypeID = agentTypeId,
+                areaMask = NavMesh.AllAreas
+            };
+
+            if (!NavMesh.SamplePosition(position, out var hit, 6f, filter))
+            {
+                return false;
+            }
+
+            areaIndex = ResolveAreaIndexFromMask(hit.mask);
+            areaName = GetAreaName(areaIndex);
+            return true;
         }
 
         private void RebuildModifierVolumes()
@@ -202,9 +231,107 @@ namespace AutoBattler
             modifierVolumeRoot = rootObject.transform;
         }
 
+        private static int ResolveDefaultAreaIndex(SceneBattleConfig config)
+        {
+            var terrainMovement = config != null ? config.terrainMovement : null;
+            var defaultAreaName = terrainMovement != null ? terrainMovement.defaultNavArea : string.Empty;
+            var defaultAreaIndex = !string.IsNullOrWhiteSpace(defaultAreaName)
+                ? NavMesh.GetAreaFromName(defaultAreaName)
+                : -1;
+            return defaultAreaIndex >= 0 ? defaultAreaIndex : 0;
+        }
+
+        private static float ResolveAreaCost(UnitDefinition definition, string terrainType)
+        {
+            if (definition == null)
+            {
+                return 1f;
+            }
+
+            var pathCosts = definition.TerrainPathCostProfile;
+            if (pathCosts != null && pathCosts.HasOverrides)
+            {
+                return Mathf.Clamp(pathCosts.GetModifier(terrainType), 1f, 20f);
+            }
+
+            var fastestModifier = definition.TerrainSpeedProfile.GetMaxModifier();
+            return ConvertSpeedModifierToAreaCost(definition.TerrainSpeedProfile.GetModifier(terrainType), fastestModifier);
+        }
+
         private static float ConvertSpeedModifierToAreaCost(float speedModifier, float fastestModifier)
         {
             return Mathf.Clamp(Mathf.Max(1f, fastestModifier) / Mathf.Max(0.05f, speedModifier), 1f, 20f);
+        }
+
+        private void RebuildAreaNames(SceneBattleConfig config)
+        {
+            areaNames.Clear();
+            areaNames[0] = "Walkable";
+            areaNames[1] = "Not Walkable";
+            areaNames[2] = "Jump";
+
+            var terrainMovement = config != null ? config.terrainMovement : null;
+            if (terrainMovement == null)
+            {
+                return;
+            }
+
+            RegisterAreaName(terrainMovement.defaultNavArea);
+            var mappings = terrainMovement.mappings;
+            if (mappings == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < mappings.Length; i++)
+            {
+                var mapping = mappings[i];
+                if (mapping == null)
+                {
+                    continue;
+                }
+
+                RegisterAreaName(mapping.navArea);
+            }
+        }
+
+        private void RegisterAreaName(string areaName)
+        {
+            if (string.IsNullOrWhiteSpace(areaName))
+            {
+                return;
+            }
+
+            var areaIndex = NavMesh.GetAreaFromName(areaName);
+            if (areaIndex >= 0)
+            {
+                areaNames[areaIndex] = areaName;
+            }
+        }
+
+        private static int ResolveAreaIndexFromMask(int mask)
+        {
+            if (mask <= 0)
+            {
+                return 0;
+            }
+
+            for (var areaIndex = 0; areaIndex < 32; areaIndex++)
+            {
+                if ((mask & (1 << areaIndex)) != 0)
+                {
+                    return areaIndex;
+                }
+            }
+
+            return 0;
+        }
+
+        private string GetAreaName(int areaIndex)
+        {
+            return areaNames.TryGetValue(areaIndex, out var areaName)
+                ? areaName
+                : "Area " + areaIndex;
         }
     }
 }

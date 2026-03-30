@@ -40,6 +40,7 @@ namespace AutoBattler
         [SerializeField] private string missionName = "Mission";
         [SerializeField] private string missionDescription = string.Empty;
         [SerializeField] private TextAsset sceneConfigAsset;
+        [SerializeField] private bool debugLogUiToConsole;
         [SerializeField] private ScenarioConditionMode winEvaluationMode = ScenarioConditionMode.Any;
         [SerializeField] private ScenarioConditionMode loseEvaluationMode = ScenarioConditionMode.Any;
         [FormerlySerializedAs("winConditions")]
@@ -57,6 +58,7 @@ namespace AutoBattler
 
         public string MissionName => string.IsNullOrWhiteSpace(missionName) ? gameObject.scene.name : missionName;
         public string MissionDescription => missionDescription;
+        public bool DebugLogUiToConsole => debugLogUiToConsole;
 
         private void Awake()
         {
@@ -75,6 +77,8 @@ namespace AutoBattler
             {
                 Instance = null;
             }
+
+            UiDebugConsole.Reset();
         }
 
         public void ConfigureRuntimeFallback()
@@ -110,6 +114,7 @@ namespace AutoBattler
             playerWinProgressSeconds = new float[playerWinConditions.Length];
             playerLoseProgressSeconds = new float[playerLoseConditions.Length];
             isInitialized = true;
+            UiDebugConsole.Reset();
         }
 
         public string GetObjectiveSummary()
