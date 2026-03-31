@@ -140,6 +140,28 @@ namespace AutoBattler
             return count;
         }
 
+        public static List<BattleUnit> GetAliveUnits(Team team)
+        {
+            var units = new List<BattleUnit>();
+            for (var i = Units.Count - 1; i >= 0; i--)
+            {
+                var candidate = Units[i];
+                if (candidate == null)
+                {
+                    Units.RemoveAt(i);
+                    continue;
+                }
+
+                if (candidate.IsAlive && candidate.Team == team)
+                {
+                    units.Add(candidate);
+                }
+            }
+
+            units.Sort((left, right) => string.Compare(left.Definition?.UnitName, right.Definition?.UnitName, System.StringComparison.OrdinalIgnoreCase));
+            return units;
+        }
+
         public static bool IsTeamOccupyingRadius(Team team, Vector3 center, float radius)
         {
             var radiusSqr = radius * radius;
