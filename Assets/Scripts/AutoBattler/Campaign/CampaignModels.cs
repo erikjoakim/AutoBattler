@@ -43,6 +43,7 @@ namespace AutoBattler
         public string displayName;
         public string baseTemplateId;
         public int purchaseCostGold = 10;
+        public List<string> defaultItemSlots = new List<string>();
     }
 
     [Serializable]

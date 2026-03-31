@@ -1,0 +1,50 @@
+{
+  "modifiers": [
+    {
+      "modifierTemplateId": "utility_t1_health",
+      "displayName": "Reinforced Lining",
+      "description": "Adds layered interior protection.",
+      "modifierType": "MaxHealth",
+      "itemType": "Utility",
+      "tier": 1,
+      "weight": 10,
+      "rollAMin": 1,
+      "rollAMax": 4
+    },
+    {
+      "modifierTemplateId": "utility_t1_armor",
+      "displayName": "Plated Bracing",
+      "description": "Adds extra armor support.",
+      "modifierType": "Armor",
+      "itemType": "Utility",
+      "tier": 1,
+      "weight": 8,
+      "rollAMin": 1,
+      "rollAMax": 2
+    },
+    {
+      "modifierTemplateId": "utility_t1_damage",
+      "displayName": "Reactive Charge Matrix",
+      "description": "Adds a fluctuating damage band.",
+      "modifierType": "Damage",
+      "itemType": "Utility",
+      "tier": 1,
+      "weight": 4,
+      "rollAMin": 1,
+      "rollAMax": 2,
+      "rollBMin": 3,
+      "rollBMax": 4
+    },
+    {
+      "modifierTemplateId": "legacy_field_plating_armor_boost",
+      "displayName": "Legacy Armor Reinforcement",
+      "description": "Converted from a previous item upgrade.",
+      "modifierType": "Armor",
+      "itemType": "Utility",
+      "tier": 1,
+      "weight": 1,
+      "rollAMin": 1,
+      "rollAMax": 1
+    }
+  ]
+}

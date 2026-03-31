@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace AutoBattler
 {
@@ -12,14 +13,68 @@ namespace AutoBattler
         CurrencyItem
     }
 
+    public enum ItemEffectOperation
+    {
+        Add,
+        Multiply
+    }
+
+    public enum CurrencyActionType
+    {
+        None,
+        AddModifiers,
+        RaiseTier,
+        TransformItem,
+        RemoveModifierByType
+    }
+
+    public enum ModifierType
+    {
+        MaxHealth,
+        Armor,
+        Damage,
+        VisionRange,
+        Speed,
+        Accuracy,
+        FireReliability,
+        MoveReliability
+    }
+
+    [Serializable]
+    public sealed class ItemEffectDefinition
+    {
+        public string statKey;
+        public ItemEffectOperation operation = ItemEffectOperation.Add;
+        public float value;
+    }
+
     [Serializable]
     public sealed class ItemDefinition
     {
         public string itemDefinitionId;
         public string displayName;
         public string description;
+        public string itemType;
         public string itemSlotType;
+        public int tier = 1;
         public string iconId;
+        public List<ItemEffectDefinition> effects = new List<ItemEffectDefinition>();
+    }
+
+    [Serializable]
+    public sealed class ModifierTemplateDefinition
+    {
+        public string modifierTemplateId;
+        public string displayName;
+        public string description;
+        public ModifierType modifierType = ModifierType.MaxHealth;
+        public string itemType;
+        public int tier = 1;
+        public int weight = 1;
+        public int rollAMin;
+        public int rollAMax;
+        public int rollBMin;
+        public int rollBMax;
     }
 
     [Serializable]
@@ -29,24 +84,24 @@ namespace AutoBattler
         public string displayName;
         public string description;
         public string iconId;
+        public CurrencyActionType actionType = CurrencyActionType.None;
+        public int minExistingModifiers;
+        public int maxExistingModifiers;
+        public int minAddedModifiers = 1;
+        public int maxAddedModifiers = 1;
+        public int maxModifiersPerItem = 2;
     }
 
     [Serializable]
-    public sealed class LootItemDefinition
+    public sealed class LootTableEntryDefinition
     {
-        public string lootItemId;
+        public string entryId;
         public LootRewardType rewardType;
         public string displayName;
         public int amount = 1;
         public string mapDefinitionId;
         public string itemDefinitionId;
         public string currencyItemDefinitionId;
-    }
-
-    [Serializable]
-    public sealed class LootTableEntryDefinition
-    {
-        public string lootItemId;
         public bool guaranteed;
         public float dropChance;
         public string sourceTag;
@@ -79,6 +134,20 @@ namespace AutoBattler
         public string itemInstanceId;
         public string itemDefinitionId;
         public string equippedToUnitCardId;
+        public List<AppliedItemModifierData> appliedModifiers = new List<AppliedItemModifierData>();
+        [FormerlySerializedAs("upgradeLevel")]
+        public int legacyUpgradeLevel;
+    }
+
+    [Serializable]
+    public sealed class AppliedItemModifierData
+    {
+        [FormerlySerializedAs("modifierDefinitionId")]
+        public string modifierTemplateId;
+        public ModifierType modifierType = ModifierType.MaxHealth;
+        public int rolledValueA;
+        public int rolledValueB;
+        public string sourceCurrencyItemDefinitionId;
     }
 
     [Serializable]
@@ -91,26 +160,21 @@ namespace AutoBattler
     public sealed class LootCatalogs
     {
         public LootCatalogs(
-            Dictionary<string, LootItemDefinition> lootItems,
             Dictionary<string, LootTableDefinition> lootTables,
             Dictionary<string, ItemDefinition> itemDefinitions,
-            Dictionary<string, CurrencyItemDefinition> currencyItemDefinitions)
+            Dictionary<string, CurrencyItemDefinition> currencyItemDefinitions,
+            Dictionary<string, ModifierTemplateDefinition> modifierTemplates)
         {
-            LootItems = lootItems ?? new Dictionary<string, LootItemDefinition>(StringComparer.OrdinalIgnoreCase);
             LootTables = lootTables ?? new Dictionary<string, LootTableDefinition>(StringComparer.OrdinalIgnoreCase);
             ItemDefinitions = itemDefinitions ?? new Dictionary<string, ItemDefinition>(StringComparer.OrdinalIgnoreCase);
             CurrencyItemDefinitions = currencyItemDefinitions ?? new Dictionary<string, CurrencyItemDefinition>(StringComparer.OrdinalIgnoreCase);
+            ModifierTemplates = modifierTemplates ?? new Dictionary<string, ModifierTemplateDefinition>(StringComparer.OrdinalIgnoreCase);
         }
 
-        public Dictionary<string, LootItemDefinition> LootItems { get; }
         public Dictionary<string, LootTableDefinition> LootTables { get; }
         public Dictionary<string, ItemDefinition> ItemDefinitions { get; }
         public Dictionary<string, CurrencyItemDefinition> CurrencyItemDefinitions { get; }
-
-        public bool TryGetLootItem(string lootItemId, out LootItemDefinition definition)
-        {
-            return LootItems.TryGetValue(lootItemId ?? string.Empty, out definition);
-        }
+        public Dictionary<string, ModifierTemplateDefinition> ModifierTemplates { get; }
 
         public bool TryGetLootTable(string lootTableId, out LootTableDefinition definition)
         {
@@ -126,5 +190,11 @@ namespace AutoBattler
         {
             return CurrencyItemDefinitions.TryGetValue(currencyItemDefinitionId ?? string.Empty, out definition);
         }
+
+        public bool TryGetModifierTemplate(string modifierTemplateId, out ModifierTemplateDefinition definition)
+        {
+            return ModifierTemplates.TryGetValue(modifierTemplateId ?? string.Empty, out definition);
+        }
+
     }
 }

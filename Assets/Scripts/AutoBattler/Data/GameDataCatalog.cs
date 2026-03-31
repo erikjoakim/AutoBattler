@@ -295,6 +295,8 @@ namespace AutoBattler
                 Accuracy,
                 FireReliability,
                 MoveReliability,
+                0,
+                0,
                 NavigationAgentType,
                 TerrainSpeedProfile,
                 TerrainPathCostProfile,

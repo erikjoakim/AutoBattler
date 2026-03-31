@@ -170,7 +170,7 @@ namespace AutoBattler
                 return;
             }
 
-            BattleUnitRegistry.ApplySplashDamage(Team, impactPoint, ammo.Damage, ammo.Radius, this);
+            BattleUnitRegistry.ApplySplashDamage(Team, impactPoint, ResolveOutgoingDamage(ammo), ammo.Radius, this);
         }
 
         private bool TrySelectBestAmmo(BattleUnit target, float distanceToTarget, out int bestAmmoIndex, out AmmoDefinition bestAmmo)
@@ -636,6 +636,19 @@ namespace AutoBattler
             }
 
             return ammunitionCounts[ammoIndex];
+        }
+
+        private int ResolveOutgoingDamage(AmmoDefinition ammo)
+        {
+            var damage = ammo != null ? ammo.Damage : 0;
+            var bonusMin = unitDefinition != null ? unitDefinition.OutgoingDamageBonusMin : 0;
+            var bonusMax = unitDefinition != null ? unitDefinition.OutgoingDamageBonusMax : 0;
+            if (bonusMax <= 0)
+            {
+                return damage;
+            }
+
+            return Mathf.Max(0, damage + CombatRoller.RollInclusive(Mathf.Max(0, bonusMin), Mathf.Max(0, bonusMax)));
         }
 
         public float GetAreaCost(int areaIndex)

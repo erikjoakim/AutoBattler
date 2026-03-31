@@ -16,6 +16,8 @@ namespace AutoBattler
         [SerializeField] private float accuracy = 1f;
         [SerializeField] private float fireReliability = 1f;
         [SerializeField] private float moveReliability = 1f;
+        [SerializeField] private int outgoingDamageBonusMin;
+        [SerializeField] private int outgoingDamageBonusMax;
         [SerializeField] private string navigationAgentType;
         [SerializeField] private AmmoDefinition[] ammunition;
         [SerializeField] private int[] ammunitionCounts;
@@ -33,6 +35,8 @@ namespace AutoBattler
             float accuracy,
             float fireReliability,
             float moveReliability,
+            int outgoingDamageBonusMin,
+            int outgoingDamageBonusMax,
             string navigationAgentType,
             TerrainSpeedProfile terrainSpeedProfile,
             TerrainSpeedProfile terrainPathCostProfile,
@@ -49,6 +53,8 @@ namespace AutoBattler
             this.accuracy = accuracy;
             this.fireReliability = fireReliability;
             this.moveReliability = moveReliability;
+            this.outgoingDamageBonusMin = outgoingDamageBonusMin;
+            this.outgoingDamageBonusMax = Mathf.Max(outgoingDamageBonusMin, outgoingDamageBonusMax);
             this.navigationAgentType = navigationAgentType;
             this.terrainSpeedProfile = terrainSpeedProfile ?? TerrainSpeedProfile.Empty;
             this.terrainPathCostProfile = terrainPathCostProfile ?? TerrainSpeedProfile.Empty;
@@ -66,6 +72,8 @@ namespace AutoBattler
         public float Accuracy => accuracy;
         public float FireReliability => fireReliability;
         public float MoveReliability => moveReliability;
+        public int OutgoingDamageBonusMin => outgoingDamageBonusMin;
+        public int OutgoingDamageBonusMax => outgoingDamageBonusMax;
         public string NavigationAgentType => navigationAgentType;
         public AmmoDefinition[] Ammunition => ammunition;
         public int[] AmmunitionCounts => ammunitionCounts;

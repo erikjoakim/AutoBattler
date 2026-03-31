@@ -65,6 +65,7 @@ namespace AutoBattler
                 supportObject.AddComponent<BattleObjectiveManager>();
                 supportObject.AddComponent<ScoreHud>();
                 supportObject.AddComponent<UnitInspectorHud>();
+                supportObject.AddComponent<GameSpeedController>();
                 supportObject.AddComponent<BattleNavigationManager>();
                 supportObject.AddComponent<BattleLootManager>();
             }
@@ -91,6 +92,11 @@ namespace AutoBattler
             if (FindAnyObjectByType<BattleNavigationManager>() == null)
             {
                 ScoreManager.Instance.gameObject.AddComponent<BattleNavigationManager>();
+            }
+
+            if (FindAnyObjectByType<GameSpeedController>() == null)
+            {
+                ScoreManager.Instance.gameObject.AddComponent<GameSpeedController>();
             }
 
             if (FindAnyObjectByType<BattleLootManager>() == null)

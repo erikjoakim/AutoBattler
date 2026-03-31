@@ -100,7 +100,8 @@ namespace AutoBattler
                     unitCardDefinitionId = template.UnitTypeKey,
                     displayName = string.IsNullOrWhiteSpace(template.UnitName) ? template.UnitTypeKey : template.UnitName,
                     baseTemplateId = template.UnitTypeKey,
-                    purchaseCostGold = Mathf.Max(0, template.PurchaseCostGold)
+                    purchaseCostGold = Mathf.Max(0, template.PurchaseCostGold),
+                    defaultItemSlots = new List<string> { "Utility", "Weapon" }
                 };
             }
 
@@ -132,7 +133,8 @@ namespace AutoBattler
                     unitCardDefinitionId = "Guard Infantry",
                     displayName = "Guard Infantry",
                     baseTemplateId = "Guard Infantry",
-                    purchaseCostGold = 10
+                    purchaseCostGold = 10,
+                    defaultItemSlots = new List<string> { "Utility", "Weapon" }
                 }
             };
         }

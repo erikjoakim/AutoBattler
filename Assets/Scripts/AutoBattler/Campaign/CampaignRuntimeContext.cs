@@ -19,6 +19,7 @@ namespace AutoBattler
         public static CampaignRuntimeContext Instance { get; private set; }
 
         private CampaignCatalogs catalogs;
+        private LootCatalogs lootCatalogs;
         private CampaignSaveData saveData;
         private PreparedMissionData activeMission;
         private BattleResultData pendingBattleResult;
@@ -26,6 +27,7 @@ namespace AutoBattler
         private bool headQuarterStartupApplied;
 
         public CampaignCatalogs Catalogs => catalogs;
+        public LootCatalogs LootCatalogs => lootCatalogs;
         public CampaignSaveData SaveData => saveData;
         public PreparedMissionData ActiveMission => activeMission;
         public BattleResultData PendingBattleResult => pendingBattleResult;
@@ -54,6 +56,7 @@ namespace AutoBattler
             Instance = this;
             DontDestroyOnLoad(gameObject);
             catalogs = CampaignCatalogLoader.Load();
+            lootCatalogs = LootCatalogLoader.Load();
             saveData = LoadOrCreateSave();
             SceneManager.sceneLoaded += OnSceneLoaded;
         }
@@ -102,6 +105,71 @@ namespace AutoBattler
         public IReadOnlyList<OwnedUnitItem> GetOwnedUnitItems()
         {
             return saveData.ownedUnitItems;
+        }
+
+        public IReadOnlyList<OwnedUnitItem> GetEquippedUnitItems(string unitCardId)
+        {
+            var items = new List<OwnedUnitItem>();
+            if (string.IsNullOrWhiteSpace(unitCardId))
+            {
+                return items;
+            }
+
+            for (var i = 0; i < saveData.ownedUnitItems.Count; i++)
+            {
+                var item = saveData.ownedUnitItems[i];
+                if (item != null && string.Equals(item.equippedToUnitCardId, unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    items.Add(item);
+                }
+            }
+
+            return items;
+        }
+
+        public IReadOnlyList<OwnedUnitItem> GetCompatibleUnequippedUnitItems(string unitCardId)
+        {
+            var items = new List<OwnedUnitItem>();
+            var card = FindUnitCard(unitCardId);
+            if (card == null)
+            {
+                return items;
+            }
+
+            for (var i = 0; i < saveData.ownedUnitItems.Count; i++)
+            {
+                var item = saveData.ownedUnitItems[i];
+                if (item == null || !string.IsNullOrWhiteSpace(item.equippedToUnitCardId))
+                {
+                    continue;
+                }
+
+                if (CanEquipItemToCard(item, card, out _))
+                {
+                    items.Add(item);
+                }
+            }
+
+            return items;
+        }
+
+        public int GetCurrencyAmount(string currencyItemDefinitionId)
+        {
+            if (string.IsNullOrWhiteSpace(currencyItemDefinitionId))
+            {
+                return 0;
+            }
+
+            for (var i = 0; i < saveData.currencyItemStacks.Count; i++)
+            {
+                var stack = saveData.currencyItemStacks[i];
+                if (stack != null && string.Equals(stack.currencyItemDefinitionId, currencyItemDefinitionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Mathf.Max(0, stack.amount);
+                }
+            }
+
+            return 0;
         }
 
         public IReadOnlyList<OwnedUnitCard> GetCardsAssignedToSlot(string hexSlotId)
@@ -253,6 +321,160 @@ namespace AutoBattler
             return true;
         }
 
+        public bool TryEquipItemToUnitCard(string itemInstanceId, string unitCardId, out string error)
+        {
+            error = string.Empty;
+            var item = FindOwnedUnitItem(itemInstanceId);
+            var card = FindUnitCard(unitCardId);
+            if (item == null || card == null)
+            {
+                error = "Unable to find the selected item or unit card.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.equippedToUnitCardId))
+            {
+                error = "That item is already equipped.";
+                return false;
+            }
+
+            if (!CanEquipItemToCard(item, card, out error))
+            {
+                return false;
+            }
+
+            item.equippedToUnitCardId = card.unitCardId;
+            card.equippedItemIds ??= new List<string>();
+            if (!card.equippedItemIds.Contains(item.itemInstanceId))
+            {
+                card.equippedItemIds.Add(item.itemInstanceId);
+            }
+
+            Save();
+            return true;
+        }
+
+        public bool TryUnequipItemFromUnitCard(string itemInstanceId, string unitCardId, out string error)
+        {
+            error = string.Empty;
+            var item = FindOwnedUnitItem(itemInstanceId);
+            var card = FindUnitCard(unitCardId);
+            if (item == null || card == null)
+            {
+                error = "Unable to find the selected item or unit card.";
+                return false;
+            }
+
+            if (!string.Equals(item.equippedToUnitCardId, card.unitCardId, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "That item is not equipped to the selected unit.";
+                return false;
+            }
+
+            item.equippedToUnitCardId = string.Empty;
+            card.equippedItemIds?.Remove(item.itemInstanceId);
+            Save();
+            return true;
+        }
+
+        public bool TryApplyItemModification(string itemInstanceId, string currencyItemDefinitionId, out string error)
+        {
+            error = string.Empty;
+            var item = FindOwnedUnitItem(itemInstanceId);
+            if (item == null)
+            {
+                error = "Unable to find the selected item.";
+                return false;
+            }
+
+            if (lootCatalogs == null || !lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out var definition) || definition == null)
+            {
+                error = "The selected item definition was not found.";
+                return false;
+            }
+
+            if (!lootCatalogs.TryGetCurrencyItemDefinition(currencyItemDefinitionId, out var currencyDefinition) || currencyDefinition == null)
+            {
+                error = "The selected currency definition was not found.";
+                return false;
+            }
+
+            return currencyDefinition.actionType switch
+            {
+                CurrencyActionType.AddModifiers => TryApplyAddModifiersCurrency(item, definition, currencyDefinition, out error),
+                _ => UnsupportedCurrencyAction(currencyDefinition, out error)
+            };
+        }
+
+        private bool TryApplyAddModifiersCurrency(OwnedUnitItem item, ItemDefinition definition, CurrencyItemDefinition currencyDefinition, out string error)
+        {
+            error = string.Empty;
+            if (item == null || definition == null || currencyDefinition == null || lootCatalogs == null)
+            {
+                error = "Unable to apply that currency to the selected item.";
+                return false;
+            }
+
+            item.appliedModifiers ??= new List<AppliedItemModifierData>();
+            var existingCount = item.appliedModifiers.Count;
+            if (existingCount < currencyDefinition.minExistingModifiers || existingCount > currencyDefinition.maxExistingModifiers)
+            {
+                error = "That currency cannot be used on an item with the current number of modifiers.";
+                return false;
+            }
+
+            if (existingCount >= currencyDefinition.maxModifiersPerItem)
+            {
+                error = "That item cannot hold more modifiers.";
+                return false;
+            }
+
+            var candidates = BuildModifierTemplatePool(item, definition);
+            if (candidates.Count == 0)
+            {
+                error = "No valid modifier templates matched that item.";
+                return false;
+            }
+
+            if (!TrySpendCurrency(currencyDefinition.currencyItemDefinitionId, 1))
+            {
+                error = "Not enough " + currencyDefinition.currencyItemDefinitionId + ".";
+                return false;
+            }
+
+            var addCount = UnityEngine.Random.Range(currencyDefinition.minAddedModifiers, currencyDefinition.maxAddedModifiers + 1);
+            var remainingCapacity = Mathf.Max(0, currencyDefinition.maxModifiersPerItem - existingCount);
+            addCount = Mathf.Clamp(addCount, 0, remainingCapacity);
+            var addedCount = 0;
+            for (var addIndex = 0; addIndex < addCount; addIndex++)
+            {
+                var template = SelectWeightedModifierTemplate(candidates);
+                if (template == null)
+                {
+                    break;
+                }
+
+                item.appliedModifiers.Add(InstantiateModifier(template, currencyDefinition.currencyItemDefinitionId));
+                candidates.Remove(template);
+                addedCount++;
+            }
+
+            if (addedCount <= 0)
+            {
+                error = "No valid modifier could be applied.";
+                return false;
+            }
+
+            Save();
+            return true;
+        }
+
+        private static bool UnsupportedCurrencyAction(CurrencyItemDefinition currencyDefinition, out string error)
+        {
+            error = "Currency action not implemented: " + (currencyDefinition != null ? currencyDefinition.actionType.ToString() : "Unknown");
+            return false;
+        }
+
         public bool TryLaunchMissionFromHex(string hexSlotId, out string error)
         {
             error = string.Empty;
@@ -392,6 +614,7 @@ namespace AutoBattler
                 if (deadCards.Contains(card.unitCardId))
                 {
                     card.status = UnitCardStatus.Dead;
+                    RemoveEquippedItemsForCard(card.unitCardId);
                 }
                 else
                 {
@@ -494,6 +717,7 @@ namespace AutoBattler
                     continue;
                 }
 
+                ApplyEquippedItemEffects(ownedCard, unitSpawn);
                 unitSpawn.ownedUnitCardId = ownedCard.unitCardId;
                 result.Add(unitSpawn);
             }
@@ -530,6 +754,116 @@ namespace AutoBattler
             }
 
             return unitSpawn;
+        }
+
+        private void ApplyEquippedItemEffects(OwnedUnitCard ownedCard, UnitSpawnConfig unitSpawn)
+        {
+            if (ownedCard == null || unitSpawn == null || unitSpawn.definition == null || lootCatalogs == null)
+            {
+                return;
+            }
+
+            var effects = new List<ItemEffectDefinition>();
+            var damageBonusMin = 0;
+            var damageBonusMax = 0;
+            for (var i = 0; i < ownedCard.equippedItemIds.Count; i++)
+            {
+                var ownedItem = FindOwnedUnitItem(ownedCard.equippedItemIds[i]);
+                if (ownedItem == null || !string.Equals(ownedItem.equippedToUnitCardId, ownedCard.unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!lootCatalogs.TryGetItemDefinition(ownedItem.itemDefinitionId, out var itemDefinition) || itemDefinition == null)
+                {
+                    continue;
+                }
+
+                AppendItemEffects(effects, itemDefinition.effects);
+                AppendAppliedModifierEffects(effects, ownedItem, ref damageBonusMin, ref damageBonusMax);
+            }
+
+            if (effects.Count == 0 && damageBonusMin == 0 && damageBonusMax == 0)
+            {
+                return;
+            }
+
+            unitSpawn.definition = ApplyItemEffectsToDefinition(unitSpawn.definition, effects, damageBonusMin, damageBonusMax);
+        }
+
+        private static UnitDefinition ApplyItemEffectsToDefinition(UnitDefinition definition, List<ItemEffectDefinition> effects, int damageBonusMin, int damageBonusMax)
+        {
+            if (definition == null)
+            {
+                return definition;
+            }
+
+            var maxHealth = definition.MaxHealth;
+            var armor = definition.Armor;
+            var visionRange = definition.VisionRange;
+            var speed = definition.Speed;
+            var accuracy = definition.Accuracy;
+            var fireReliability = definition.FireReliability;
+            var moveReliability = definition.MoveReliability;
+
+            for (var i = 0; effects != null && i < effects.Count; i++)
+            {
+                var effect = effects[i];
+                switch (effect.statKey)
+                {
+                    case "maxHealth":
+                        maxHealth = Mathf.Max(1, Mathf.RoundToInt(ApplyOperation(maxHealth, effect)));
+                        break;
+                    case "armor":
+                        armor = Mathf.Max(0, Mathf.RoundToInt(ApplyOperation(armor, effect)));
+                        break;
+                    case "visionRange":
+                        visionRange = Mathf.Max(0.1f, ApplyOperation(visionRange, effect));
+                        break;
+                    case "speed":
+                        speed = Mathf.Max(0.1f, ApplyOperation(speed, effect));
+                        break;
+                    case "accuracy":
+                        accuracy = Mathf.Clamp01(ApplyOperation(accuracy, effect));
+                        break;
+                    case "fireReliability":
+                        fireReliability = Mathf.Clamp01(ApplyOperation(fireReliability, effect));
+                        break;
+                    case "moveReliability":
+                        moveReliability = Mathf.Clamp01(ApplyOperation(moveReliability, effect));
+                        break;
+                }
+            }
+
+            var ammoCounts = (int[])definition.AmmunitionCounts.Clone();
+            var ammoDefinitions = new AmmoDefinition[definition.Ammunition.Length];
+            Array.Copy(definition.Ammunition, ammoDefinitions, ammoDefinitions.Length);
+
+            return new UnitDefinition(
+                definition.TemplateId,
+                definition.UnitName,
+                definition.UnitType,
+                maxHealth,
+                armor,
+                visionRange,
+                speed,
+                accuracy,
+                fireReliability,
+                moveReliability,
+                Mathf.Max(0, definition.OutgoingDamageBonusMin + damageBonusMin),
+                Mathf.Max(0, definition.OutgoingDamageBonusMax + damageBonusMax),
+                definition.NavigationAgentType,
+                definition.TerrainSpeedProfile,
+                definition.TerrainPathCostProfile,
+                ammoCounts,
+                ammoDefinitions);
+        }
+
+        private static float ApplyOperation(float currentValue, ItemEffectDefinition effect)
+        {
+            return effect.operation == ItemEffectOperation.Multiply
+                ? currentValue * effect.value
+                : currentValue + effect.value;
         }
 
         private void UnlockNeighboringHexes(string hexSlotId)
@@ -838,6 +1172,25 @@ namespace AutoBattler
             data.ownedUnitCards ??= new List<OwnedUnitCard>();
             data.ownedUnitItems ??= new List<OwnedUnitItem>();
             data.hexBoardState ??= new List<HexSlotSaveData>();
+            for (var i = 0; i < data.ownedUnitCards.Count; i++)
+            {
+                if (data.ownedUnitCards[i] != null)
+                {
+                    data.ownedUnitCards[i].equippedItemIds ??= new List<string>();
+                }
+            }
+            for (var i = 0; i < data.ownedUnitItems.Count; i++)
+            {
+                var item = data.ownedUnitItems[i];
+                if (item == null)
+                {
+                    continue;
+                }
+
+                item.appliedModifiers ??= new List<AppliedItemModifierData>();
+                NormalizeAppliedModifiers(item);
+                MigrateLegacyItemUpgrades(item);
+            }
             for (var i = 0; i < CampaignBoardLayout.DefaultSlots.Length; i++)
             {
                 var definition = CampaignBoardLayout.DefaultSlots[i];
@@ -936,6 +1289,424 @@ namespace AutoBattler
             }
 
             return null;
+        }
+
+        private OwnedUnitItem FindOwnedUnitItem(string itemInstanceId)
+        {
+            for (var i = 0; i < saveData.ownedUnitItems.Count; i++)
+            {
+                var item = saveData.ownedUnitItems[i];
+                if (item != null && string.Equals(item.itemInstanceId, itemInstanceId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return item;
+                }
+            }
+
+            return null;
+        }
+
+        private void AppendAppliedModifierEffects(List<ItemEffectDefinition> destination, OwnedUnitItem ownedItem, ref int damageBonusMin, ref int damageBonusMax)
+        {
+            if (destination == null || ownedItem?.appliedModifiers == null || lootCatalogs == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < ownedItem.appliedModifiers.Count; i++)
+            {
+                var appliedModifier = ownedItem.appliedModifiers[i];
+                if (appliedModifier == null
+                    || string.IsNullOrWhiteSpace(appliedModifier.modifierTemplateId))
+                {
+                    continue;
+                }
+
+                AppendAppliedModifierEffect(destination, appliedModifier, ref damageBonusMin, ref damageBonusMax);
+            }
+        }
+
+        private static void AppendAppliedModifierEffect(List<ItemEffectDefinition> destination, AppliedItemModifierData appliedModifier, ref int damageBonusMin, ref int damageBonusMax)
+        {
+            switch (appliedModifier.modifierType)
+            {
+                case ModifierType.MaxHealth:
+                    destination.Add(CreateSingleValueEffect("maxHealth", appliedModifier.rolledValueA));
+                    break;
+                case ModifierType.Armor:
+                    destination.Add(CreateSingleValueEffect("armor", appliedModifier.rolledValueA));
+                    break;
+                case ModifierType.VisionRange:
+                    destination.Add(CreateSingleValueEffect("visionRange", appliedModifier.rolledValueA));
+                    break;
+                case ModifierType.Speed:
+                    destination.Add(CreateSingleValueEffect("speed", appliedModifier.rolledValueA));
+                    break;
+                case ModifierType.Accuracy:
+                    destination.Add(CreateSingleValueEffect("accuracy", appliedModifier.rolledValueA));
+                    break;
+                case ModifierType.FireReliability:
+                    destination.Add(CreateSingleValueEffect("fireReliability", appliedModifier.rolledValueA));
+                    break;
+                case ModifierType.MoveReliability:
+                    destination.Add(CreateSingleValueEffect("moveReliability", appliedModifier.rolledValueA));
+                    break;
+                case ModifierType.Damage:
+                    damageBonusMin += appliedModifier.rolledValueA;
+                    damageBonusMax += Mathf.Max(appliedModifier.rolledValueA, appliedModifier.rolledValueB);
+                    break;
+            }
+        }
+
+        private static ItemEffectDefinition CreateSingleValueEffect(string statKey, int value)
+        {
+            return new ItemEffectDefinition
+            {
+                statKey = statKey,
+                operation = ItemEffectOperation.Add,
+                value = value
+            };
+        }
+
+        private static void AppendItemEffects(List<ItemEffectDefinition> destination, List<ItemEffectDefinition> source)
+        {
+            if (destination == null || source == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < source.Count; i++)
+            {
+                var effect = source[i];
+                if (effect == null || string.IsNullOrWhiteSpace(effect.statKey))
+                {
+                    continue;
+                }
+
+                destination.Add(new ItemEffectDefinition
+                {
+                    statKey = effect.statKey,
+                    operation = effect.operation,
+                    value = effect.value
+                });
+            }
+        }
+
+        private List<ModifierTemplateDefinition> BuildModifierTemplatePool(OwnedUnitItem ownedItem, ItemDefinition itemDefinition)
+        {
+            var results = new List<ModifierTemplateDefinition>();
+            if (itemDefinition == null || lootCatalogs?.ModifierTemplates == null)
+            {
+                return results;
+            }
+
+            foreach (var pair in lootCatalogs.ModifierTemplates)
+            {
+                var template = pair.Value;
+                if (template == null
+                    || !string.Equals(template.itemType, itemDefinition.itemType, StringComparison.OrdinalIgnoreCase)
+                    || template.tier != itemDefinition.tier
+                    || HasModifier(ownedItem, template.modifierTemplateId))
+                {
+                    continue;
+                }
+
+                results.Add(template);
+            }
+
+            return results;
+        }
+
+        private static ModifierTemplateDefinition SelectWeightedModifierTemplate(List<ModifierTemplateDefinition> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return null;
+            }
+
+            var totalWeight = 0;
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                totalWeight += Mathf.Max(1, candidates[i].weight);
+            }
+
+            if (totalWeight <= 0)
+            {
+                return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+            }
+
+            var roll = UnityEngine.Random.Range(0, totalWeight);
+            var runningWeight = 0;
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                runningWeight += Mathf.Max(1, candidates[i].weight);
+                if (roll < runningWeight)
+                {
+                    return candidates[i];
+                }
+            }
+
+            return candidates[candidates.Count - 1];
+        }
+
+        private static bool HasModifier(OwnedUnitItem ownedItem, string modifierTemplateId)
+        {
+            if (ownedItem?.appliedModifiers == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < ownedItem.appliedModifiers.Count; i++)
+            {
+                var appliedModifier = ownedItem.appliedModifiers[i];
+                if (appliedModifier != null
+                    && string.Equals(appliedModifier.modifierTemplateId, modifierTemplateId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static AppliedItemModifierData InstantiateModifier(ModifierTemplateDefinition template, string sourceCurrencyItemDefinitionId)
+        {
+            var appliedModifier = new AppliedItemModifierData
+            {
+                modifierTemplateId = template.modifierTemplateId,
+                modifierType = template.modifierType,
+                rolledValueA = RollInclusive(template.rollAMin, template.rollAMax),
+                rolledValueB = RollInclusive(template.rollBMin, template.rollBMax),
+                sourceCurrencyItemDefinitionId = sourceCurrencyItemDefinitionId
+            };
+
+            if (appliedModifier.modifierType == ModifierType.Damage)
+            {
+                appliedModifier.rolledValueB = Mathf.Max(appliedModifier.rolledValueA, appliedModifier.rolledValueB);
+            }
+            else
+            {
+                appliedModifier.rolledValueB = 0;
+            }
+
+            return appliedModifier;
+        }
+
+        private static int RollInclusive(int minValue, int maxValue)
+        {
+            if (maxValue < minValue)
+            {
+                (minValue, maxValue) = (maxValue, minValue);
+            }
+
+            return UnityEngine.Random.Range(minValue, maxValue + 1);
+        }
+
+        private void MigrateLegacyItemUpgrades(OwnedUnitItem item)
+        {
+            if (item == null || item.legacyUpgradeLevel <= 0 || lootCatalogs == null)
+            {
+                return;
+            }
+
+            var legacyModifierId = GetLegacyModifierDefinitionId(item.itemDefinitionId);
+            if (string.IsNullOrWhiteSpace(legacyModifierId) || !lootCatalogs.TryGetModifierTemplate(legacyModifierId, out var template) || template == null)
+            {
+                item.legacyUpgradeLevel = 0;
+                return;
+            }
+
+            item.appliedModifiers ??= new List<AppliedItemModifierData>();
+            for (var i = 0; i < item.legacyUpgradeLevel; i++)
+            {
+                item.appliedModifiers.Add(InstantiateModifier(template, "legacy_migration"));
+            }
+
+            item.legacyUpgradeLevel = 0;
+        }
+
+        private static string GetLegacyModifierDefinitionId(string itemDefinitionId)
+        {
+            return string.Equals(itemDefinitionId, "field_plating", StringComparison.OrdinalIgnoreCase)
+                ? "legacy_field_plating_armor_boost"
+                : string.Empty;
+        }
+
+        private void NormalizeAppliedModifiers(OwnedUnitItem item)
+        {
+            if (item?.appliedModifiers == null || lootCatalogs == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < item.appliedModifiers.Count; i++)
+            {
+                var appliedModifier = item.appliedModifiers[i];
+                if (appliedModifier == null || string.IsNullOrWhiteSpace(appliedModifier.modifierTemplateId))
+                {
+                    continue;
+                }
+
+                if (string.Equals(appliedModifier.modifierTemplateId, "reinforced_lining", StringComparison.OrdinalIgnoreCase))
+                {
+                    appliedModifier.modifierTemplateId = "utility_t1_health";
+                    appliedModifier.modifierType = ModifierType.MaxHealth;
+                    appliedModifier.rolledValueA = appliedModifier.rolledValueA == 0 ? 2 : appliedModifier.rolledValueA;
+                    appliedModifier.rolledValueB = 0;
+                    continue;
+                }
+
+                if (string.Equals(appliedModifier.modifierTemplateId, "legacy_field_plating_armor_boost", StringComparison.OrdinalIgnoreCase))
+                {
+                    appliedModifier.modifierType = ModifierType.Armor;
+                    appliedModifier.rolledValueA = appliedModifier.rolledValueA == 0 ? 1 : appliedModifier.rolledValueA;
+                    appliedModifier.rolledValueB = 0;
+                    continue;
+                }
+
+                if (!lootCatalogs.TryGetModifierTemplate(appliedModifier.modifierTemplateId, out var template) || template == null)
+                {
+                    continue;
+                }
+
+                appliedModifier.modifierType = template.modifierType;
+                if (appliedModifier.modifierType == ModifierType.Damage)
+                {
+                    if (appliedModifier.rolledValueA == 0 && appliedModifier.rolledValueB == 0)
+                    {
+                        appliedModifier.rolledValueA = template.rollAMin;
+                        appliedModifier.rolledValueB = Mathf.Max(template.rollAMin, template.rollBMin);
+                    }
+                    else
+                    {
+                        appliedModifier.rolledValueB = Mathf.Max(appliedModifier.rolledValueA, appliedModifier.rolledValueB);
+                    }
+                }
+                else if (appliedModifier.rolledValueA == 0)
+                {
+                    appliedModifier.rolledValueA = template.rollAMin;
+                    appliedModifier.rolledValueB = 0;
+                }
+            }
+        }
+
+        private bool CanEquipItemToCard(OwnedUnitItem item, OwnedUnitCard card, out string error)
+        {
+            error = string.Empty;
+            if (item == null || card == null)
+            {
+                error = "Invalid item or unit card.";
+                return false;
+            }
+
+            if (!catalogs.TryGetUnitCardDefinition(card.definitionId, out var cardDefinition) || cardDefinition == null)
+            {
+                error = "Unable to resolve the selected unit card definition.";
+                return false;
+            }
+
+            if (lootCatalogs == null || !lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out var itemDefinition) || itemDefinition == null)
+            {
+                error = "Unable to resolve the selected item definition.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(itemDefinition.itemSlotType))
+            {
+                error = "That item has no valid slot type.";
+                return false;
+            }
+
+            var totalSlots = 0;
+            for (var i = 0; i < cardDefinition.defaultItemSlots.Count; i++)
+            {
+                if (string.Equals(cardDefinition.defaultItemSlots[i], itemDefinition.itemSlotType, StringComparison.OrdinalIgnoreCase))
+                {
+                    totalSlots++;
+                }
+            }
+
+            if (totalSlots <= 0)
+            {
+                error = "That unit has no " + itemDefinition.itemSlotType + " slot.";
+                return false;
+            }
+
+            var usedSlots = 0;
+            for (var i = 0; i < card.equippedItemIds.Count; i++)
+            {
+                var equippedItem = FindOwnedUnitItem(card.equippedItemIds[i]);
+                if (equippedItem == null)
+                {
+                    continue;
+                }
+
+                if (lootCatalogs.TryGetItemDefinition(equippedItem.itemDefinitionId, out var equippedDefinition)
+                    && equippedDefinition != null
+                    && string.Equals(equippedDefinition.itemSlotType, itemDefinition.itemSlotType, StringComparison.OrdinalIgnoreCase))
+                {
+                    usedSlots++;
+                }
+            }
+
+            if (usedSlots >= totalSlots)
+            {
+                error = "No free " + itemDefinition.itemSlotType + " slot is available.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TrySpendCurrency(string currencyItemDefinitionId, int amount)
+        {
+            if (string.IsNullOrWhiteSpace(currencyItemDefinitionId) || amount <= 0)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < saveData.currencyItemStacks.Count; i++)
+            {
+                var stack = saveData.currencyItemStacks[i];
+                if (stack == null || !string.Equals(stack.currencyItemDefinitionId, currencyItemDefinitionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (stack.amount < amount)
+                {
+                    return false;
+                }
+
+                stack.amount -= amount;
+                if (stack.amount <= 0)
+                {
+                    saveData.currencyItemStacks.RemoveAt(i);
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private void RemoveEquippedItemsForCard(string unitCardId)
+        {
+            if (string.IsNullOrWhiteSpace(unitCardId))
+            {
+                return;
+            }
+
+            for (var i = saveData.ownedUnitItems.Count - 1; i >= 0; i--)
+            {
+                var item = saveData.ownedUnitItems[i];
+                if (item != null && string.Equals(item.equippedToUnitCardId, unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    saveData.ownedUnitItems.RemoveAt(i);
+                }
+            }
+
+            var card = FindUnitCard(unitCardId);
+            card?.equippedItemIds?.Clear();
         }
     }
 

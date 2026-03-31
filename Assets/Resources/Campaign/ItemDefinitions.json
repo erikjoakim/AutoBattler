@@ -4,8 +4,17 @@
       "itemDefinitionId": "field_plating",
       "displayName": "Field Plating",
       "description": "Recovered armor plating ready for refit.",
+      "itemType": "Utility",
       "itemSlotType": "Utility",
-      "iconId": ""
+      "tier": 1,
+      "iconId": "",
+      "effects": [
+        {
+          "statKey": "armor",
+          "operation": "Add",
+          "value": 1
+        }
+      ]
     }
   ]
 }

@@ -5,20 +5,33 @@
       "guaranteedMaxCount": 1,
       "entries": [
         {
-          "lootItemId": "gold_medium",
+          "entryId": "gold_medium",
+          "rewardType": "Gold",
+          "displayName": "Recovered Treasury",
+          "amount": 50,
           "guaranteed": true
         },
         {
-          "lootItemId": "currency_scrap_parts_x2",
+          "entryId": "currency_scrap_parts_x2",
+          "rewardType": "CurrencyItem",
+          "displayName": "Scrap Parts",
+          "currencyItemDefinitionId": "scrap_parts",
+          "amount": 2,
           "dropChance": 0.75
         },
         {
-          "lootItemId": "item_field_plating",
-          "dropChance": 0.3
+          "entryId": "item_field_plating",
+          "rewardType": "UnitItem",
+          "displayName": "Field Plating",
+          "itemDefinitionId": "field_plating",
+          "dropChance": 1.0
         },
         {
-          "lootItemId": "map_sample_operation",
-          "dropChance": 0.2
+          "entryId": "map_sample_operation",
+          "rewardType": "MapItem",
+          "displayName": "Sample Operation",
+          "mapDefinitionId": "sample_operation",
+          "dropChance": 0.8
         }
       ]
     },
@@ -26,11 +39,18 @@
       "lootTableId": "enemy_unit_basic",
       "entries": [
         {
-          "lootItemId": "gold_small",
+          "entryId": "gold_small",
+          "rewardType": "Gold",
+          "displayName": "Gold Cache",
+          "amount": 25,
           "dropChance": 0.22
         },
         {
-          "lootItemId": "currency_scrap_parts_x2",
+          "entryId": "currency_scrap_parts_x2",
+          "rewardType": "CurrencyItem",
+          "displayName": "Scrap Parts",
+          "currencyItemDefinitionId": "scrap_parts",
+          "amount": 2,
           "dropChance": 0.1
         }
       ]
@@ -40,11 +60,17 @@
       "guaranteedMaxCount": 1,
       "entries": [
         {
-          "lootItemId": "gold_small",
+          "entryId": "gold_small",
+          "rewardType": "Gold",
+          "displayName": "Gold Cache",
+          "amount": 25,
           "guaranteed": true
         },
         {
-          "lootItemId": "item_field_plating",
+          "entryId": "item_field_plating",
+          "rewardType": "UnitItem",
+          "displayName": "Field Plating",
+          "itemDefinitionId": "field_plating",
           "dropChance": 0.25
         }
       ]

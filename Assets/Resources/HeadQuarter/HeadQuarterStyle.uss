@@ -41,17 +41,20 @@
 }
 
 .left-panel {
-    width: 320px;
+    width: 340px;
     margin-right: 14px;
+    flex-direction: column;
 }
 
 .center-panel {
     flex-grow: 1;
     margin-right: 14px;
+    flex-direction: column;
 }
 
 .right-panel {
-    width: 420px;
+    width: 430px;
+    flex-direction: column;
 }
 
 .panel-title {
@@ -59,6 +62,11 @@
     unity-font-style: bold;
     margin-bottom: 12px;
     color: rgb(240, 242, 236);
+}
+
+.compact-panel-title {
+    font-size: 19px;
+    margin-bottom: 10px;
 }
 
 .sub-panel {
@@ -72,14 +80,28 @@
     flex-grow: 1;
 }
 
+.split-sub-panel {
+    flex-grow: 0;
+}
+
 .sub-panel-title {
     font-size: 17px;
     unity-font-style: bold;
     margin-bottom: 8px;
 }
 
+.compact-sub-panel-title {
+    font-size: 14px;
+    margin-top: 8px;
+    margin-bottom: 6px;
+}
+
 .list-container {
     flex-grow: 1;
+}
+
+.compact-list-container {
+    flex-grow: 0;
 }
 
 .inventory-grid {
@@ -94,6 +116,17 @@
     line-height: 20px;
     min-height: 160px;
     color: rgb(223, 230, 221);
+}
+
+.unit-details-panel {
+    min-height: 280px;
+    flex-grow: 1;
+}
+
+.unit-card-details-label {
+    min-height: 110px;
+    font-size: 14px;
+    line-height: 18px;
 }
 
 .button-row {
@@ -142,6 +175,32 @@
 .board-container {
     flex-grow: 1;
     position: relative;
+}
+
+.operations-panel {
+    height: 52%;
+    min-height: 420px;
+}
+
+.briefing-panel {
+    margin-top: 12px;
+    flex-grow: 1;
+}
+
+#InventoryPanel {
+    height: 52%;
+    min-height: 360px;
+}
+
+#AvailableCardsPanel {
+    margin-top: 12px;
+    flex-grow: 1;
+    min-height: 250px;
+}
+
+#SelectedCardsPanel {
+    flex-grow: 0;
+    min-height: 220px;
 }
 
 .hex-slot {
@@ -222,8 +281,8 @@
 
 .inventory-card {
     width: 86px;
-    height: 96px;
-    min-height: 96px;
+    height: 116px;
+    min-height: 116px;
     margin-right: 6px;
     padding-top: 8px;
     padding-bottom: 8px;
@@ -233,6 +292,14 @@
     align-self: flex-start;
     flex-shrink: 0;
     overflow: hidden;
+}
+
+.inventory-item-button {
+    margin-top: auto;
+    height: 22px;
+    font-size: 11px;
+    background-color: rgb(112, 84, 42);
+    color: rgb(245, 245, 240);
 }
 
 .inventory-card-map {
@@ -275,9 +342,9 @@
 }
 
 .unit-card {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
     background-color: rgba(39, 57, 43, 0.92);
 }
 
@@ -289,6 +356,57 @@
     flex-grow: 1;
 }
 
+.unit-card-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.equipped-items-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.equipped-item-chip {
+    max-width: 100%;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+    border-radius: 8px;
+    background-color: rgba(77, 72, 35, 0.92);
+}
+
+.equipped-item-chip-title {
+    font-size: 12px;
+    unity-font-style: bold;
+    color: rgb(246, 247, 242);
+    white-space: normal;
+}
+
+.equipped-item-chip-subtitle {
+    margin-top: 2px;
+    font-size: 10px;
+    color: rgb(213, 218, 205);
+    white-space: normal;
+}
+
+.equipped-item-chip-button {
+    margin-top: 4px;
+    height: 20px;
+    font-size: 10px;
+    background-color: rgb(112, 84, 42);
+    color: rgb(245, 245, 240);
+}
+
+.equipped-item-empty {
+    font-size: 12px;
+    color: rgb(184, 193, 188);
+}
+
 .small-action-button {
     width: 88px;
     height: 34px;
@@ -296,6 +414,19 @@
     background-color: rgb(64, 124, 84);
     color: rgb(244, 247, 242);
     font-size: 14px;
+}
+
+.tiny-action-button {
+    width: 74px;
+    height: 30px;
+    margin-left: 8px;
+    background-color: rgb(72, 110, 128);
+    color: rgb(244, 247, 242);
+    font-size: 12px;
+}
+
+.tiny-action-button-upgrade {
+    background-color: rgb(128, 98, 46);
 }
 
 .placeholder {

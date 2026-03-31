@@ -177,7 +177,7 @@ namespace AutoBattler
 
                 if (entry.dropChance > 0f && UnityEngine.Random.value <= entry.dropChance)
                 {
-                    TryAddDrop(entry.lootItemId, sourceDescription);
+                    TryAddDrop(entry, sourceDescription);
                 }
             }
 
@@ -203,26 +203,26 @@ namespace AutoBattler
 
             for (var i = 0; i < selectionCount; i++)
             {
-                TryAddDrop(guaranteedEntries[i].lootItemId, sourceDescription);
+                TryAddDrop(guaranteedEntries[i], sourceDescription);
             }
         }
 
-        private void TryAddDrop(string lootItemId, string sourceDescription)
+        private void TryAddDrop(LootTableEntryDefinition entry, string sourceDescription)
         {
-            if (string.IsNullOrWhiteSpace(lootItemId) || !catalogs.TryGetLootItem(lootItemId, out var lootItem) || lootItem == null)
+            if (entry == null)
             {
                 return;
             }
 
             droppedLoot.Add(new DroppedLootEntry
             {
-                lootItemId = lootItem.lootItemId,
-                displayName = string.IsNullOrWhiteSpace(lootItem.displayName) ? lootItem.lootItemId : lootItem.displayName,
-                rewardType = lootItem.rewardType,
-                amount = Mathf.Max(1, lootItem.amount),
-                mapDefinitionId = lootItem.mapDefinitionId,
-                itemDefinitionId = lootItem.itemDefinitionId,
-                currencyItemDefinitionId = lootItem.currencyItemDefinitionId,
+                lootItemId = entry.entryId,
+                displayName = string.IsNullOrWhiteSpace(entry.displayName) ? entry.entryId : entry.displayName,
+                rewardType = entry.rewardType,
+                amount = Mathf.Max(1, entry.amount),
+                mapDefinitionId = entry.mapDefinitionId,
+                itemDefinitionId = entry.itemDefinitionId,
+                currencyItemDefinitionId = entry.currencyItemDefinitionId,
                 sourceDescription = sourceDescription
             });
         }

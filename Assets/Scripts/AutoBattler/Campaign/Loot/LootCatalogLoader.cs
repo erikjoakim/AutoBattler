@@ -6,58 +6,18 @@ namespace AutoBattler
 {
     public static class LootCatalogLoader
     {
-        private const string LootItemsPath = "Campaign/LootItemDefinitions";
         private const string LootTablesPath = "Campaign/LootTables";
         private const string ItemDefinitionsPath = "Campaign/ItemDefinitions";
         private const string CurrencyItemDefinitionsPath = "Campaign/CurrencyItemDefinitions";
+        private const string ModifierTemplatesPath = "Campaign/ModifierTemplates";
 
         public static LootCatalogs Load()
         {
             return new LootCatalogs(
-                LoadLootItems(),
                 LoadLootTables(),
                 LoadItemDefinitions(),
-                LoadCurrencyItemDefinitions());
-        }
-
-        private static Dictionary<string, LootItemDefinition> LoadLootItems()
-        {
-            var asset = Resources.Load<TextAsset>(LootItemsPath);
-            if (asset == null)
-            {
-                return CreateDefaultLootItems();
-            }
-
-            var root = JsonDataHelper.AsObject(MiniJson.Deserialize(asset.text));
-            var items = JsonDataHelper.GetArray(root, "lootItems");
-            var definitions = new Dictionary<string, LootItemDefinition>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < items.Count; i++)
-            {
-                var item = JsonDataHelper.AsObject(items[i]);
-                if (item == null)
-                {
-                    continue;
-                }
-
-                var lootItemId = JsonDataHelper.GetString(item, "lootItemId", string.Empty);
-                if (string.IsNullOrWhiteSpace(lootItemId))
-                {
-                    continue;
-                }
-
-                definitions[lootItemId] = new LootItemDefinition
-                {
-                    lootItemId = lootItemId,
-                    rewardType = JsonDataHelper.GetEnum(item, "rewardType", LootRewardType.Gold),
-                    displayName = JsonDataHelper.GetString(item, "displayName", lootItemId),
-                    amount = Mathf.Max(1, JsonDataHelper.GetInt(item, "amount", 1)),
-                    mapDefinitionId = JsonDataHelper.GetString(item, "mapDefinitionId", string.Empty),
-                    itemDefinitionId = JsonDataHelper.GetString(item, "itemDefinitionId", string.Empty),
-                    currencyItemDefinitionId = JsonDataHelper.GetString(item, "currencyItemDefinitionId", string.Empty)
-                };
-            }
-
-            return definitions.Count > 0 ? definitions : CreateDefaultLootItems();
+                LoadCurrencyItemDefinitions(),
+                LoadModifierTemplates());
         }
 
         private static Dictionary<string, LootTableDefinition> LoadLootTables()
@@ -100,15 +60,21 @@ namespace AutoBattler
                         continue;
                     }
 
-                    var lootItemId = JsonDataHelper.GetString(entryObject, "lootItemId", string.Empty);
-                    if (string.IsNullOrWhiteSpace(lootItemId))
+                    var entryId = JsonDataHelper.GetString(entryObject, "entryId", string.Empty);
+                    if (string.IsNullOrWhiteSpace(entryId))
                     {
-                        continue;
+                        entryId = lootTableId + "_entry_" + entryIndex;
                     }
 
                     definition.entries.Add(new LootTableEntryDefinition
                     {
-                        lootItemId = lootItemId,
+                        entryId = entryId,
+                        rewardType = JsonDataHelper.GetEnum(entryObject, "rewardType", LootRewardType.Gold),
+                        displayName = JsonDataHelper.GetString(entryObject, "displayName", entryId),
+                        amount = Mathf.Max(1, JsonDataHelper.GetInt(entryObject, "amount", 1)),
+                        mapDefinitionId = JsonDataHelper.GetString(entryObject, "mapDefinitionId", string.Empty),
+                        itemDefinitionId = JsonDataHelper.GetString(entryObject, "itemDefinitionId", string.Empty),
+                        currencyItemDefinitionId = JsonDataHelper.GetString(entryObject, "currencyItemDefinitionId", string.Empty),
                         guaranteed = ParseBool(entryObject, "guaranteed", false),
                         dropChance = Mathf.Clamp01(JsonDataHelper.GetFloat(entryObject, "dropChance", 0f)),
                         sourceTag = JsonDataHelper.GetString(entryObject, "sourceTag", string.Empty)
@@ -151,12 +117,88 @@ namespace AutoBattler
                     itemDefinitionId = itemDefinitionId,
                     displayName = JsonDataHelper.GetString(item, "displayName", itemDefinitionId),
                     description = JsonDataHelper.GetString(item, "description", string.Empty),
+                    itemType = JsonDataHelper.GetString(item, "itemType", JsonDataHelper.GetString(item, "itemSlotType", string.Empty)),
                     itemSlotType = JsonDataHelper.GetString(item, "itemSlotType", string.Empty),
-                    iconId = JsonDataHelper.GetString(item, "iconId", string.Empty)
+                    tier = Mathf.Max(1, JsonDataHelper.GetInt(item, "tier", 1)),
+                    iconId = JsonDataHelper.GetString(item, "iconId", string.Empty),
+                    effects = ParseItemEffects(item)
                 };
             }
 
             return definitions.Count > 0 ? definitions : CreateDefaultItemDefinitions();
+        }
+
+        private static List<ItemEffectDefinition> ParseItemEffects(Dictionary<string, object> item)
+        {
+            var effects = new List<ItemEffectDefinition>();
+            var effectEntries = JsonDataHelper.GetArray(item, "effects");
+            for (var i = 0; i < effectEntries.Count; i++)
+            {
+                var effectObject = JsonDataHelper.AsObject(effectEntries[i]);
+                if (effectObject == null)
+                {
+                    continue;
+                }
+
+                var statKey = JsonDataHelper.GetString(effectObject, "statKey", string.Empty);
+                if (string.IsNullOrWhiteSpace(statKey))
+                {
+                    continue;
+                }
+
+                effects.Add(new ItemEffectDefinition
+                {
+                    statKey = statKey,
+                    operation = JsonDataHelper.GetEnum(effectObject, "operation", ItemEffectOperation.Add),
+                    value = JsonDataHelper.GetFloat(effectObject, "value", 0f)
+                });
+            }
+
+            return effects;
+        }
+
+        private static Dictionary<string, ModifierTemplateDefinition> LoadModifierTemplates()
+        {
+            var asset = Resources.Load<TextAsset>(ModifierTemplatesPath);
+            if (asset == null)
+            {
+                return CreateDefaultModifierTemplates();
+            }
+
+            var root = JsonDataHelper.AsObject(MiniJson.Deserialize(asset.text));
+            var items = JsonDataHelper.GetArray(root, "modifiers");
+            var definitions = new Dictionary<string, ModifierTemplateDefinition>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = JsonDataHelper.AsObject(items[i]);
+                if (item == null)
+                {
+                    continue;
+                }
+
+                var modifierTemplateId = JsonDataHelper.GetString(item, "modifierTemplateId", string.Empty);
+                if (string.IsNullOrWhiteSpace(modifierTemplateId))
+                {
+                    continue;
+                }
+
+                definitions[modifierTemplateId] = new ModifierTemplateDefinition
+                {
+                    modifierTemplateId = modifierTemplateId,
+                    displayName = JsonDataHelper.GetString(item, "displayName", modifierTemplateId),
+                    description = JsonDataHelper.GetString(item, "description", string.Empty),
+                    modifierType = JsonDataHelper.GetEnum(item, "modifierType", ModifierType.MaxHealth),
+                    itemType = JsonDataHelper.GetString(item, "itemType", string.Empty),
+                    tier = Mathf.Max(1, JsonDataHelper.GetInt(item, "tier", 1)),
+                    weight = Mathf.Max(1, JsonDataHelper.GetInt(item, "weight", 1)),
+                    rollAMin = JsonDataHelper.GetInt(item, "rollAMin", 0),
+                    rollAMax = JsonDataHelper.GetInt(item, "rollAMax", 0),
+                    rollBMin = JsonDataHelper.GetInt(item, "rollBMin", 0),
+                    rollBMax = JsonDataHelper.GetInt(item, "rollBMax", 0)
+                };
+            }
+
+            return definitions.Count > 0 ? definitions : CreateDefaultModifierTemplates();
         }
 
         private static Dictionary<string, CurrencyItemDefinition> LoadCurrencyItemDefinitions()
@@ -189,7 +231,13 @@ namespace AutoBattler
                     currencyItemDefinitionId = currencyItemDefinitionId,
                     displayName = JsonDataHelper.GetString(item, "displayName", currencyItemDefinitionId),
                     description = JsonDataHelper.GetString(item, "description", string.Empty),
-                    iconId = JsonDataHelper.GetString(item, "iconId", string.Empty)
+                    iconId = JsonDataHelper.GetString(item, "iconId", string.Empty),
+                    actionType = JsonDataHelper.GetEnum(item, "actionType", CurrencyActionType.None),
+                    minExistingModifiers = Mathf.Max(0, JsonDataHelper.GetInt(item, "minExistingModifiers", 0)),
+                    maxExistingModifiers = Mathf.Max(0, JsonDataHelper.GetInt(item, "maxExistingModifiers", 0)),
+                    minAddedModifiers = Mathf.Max(1, JsonDataHelper.GetInt(item, "minAddedModifiers", 1)),
+                    maxAddedModifiers = Mathf.Max(1, JsonDataHelper.GetInt(item, "maxAddedModifiers", 1)),
+                    maxModifiersPerItem = Mathf.Max(1, JsonDataHelper.GetInt(item, "maxModifiersPerItem", 2))
                 };
             }
 
@@ -213,49 +261,6 @@ namespace AutoBattler
             };
         }
 
-        private static Dictionary<string, LootItemDefinition> CreateDefaultLootItems()
-        {
-            return new Dictionary<string, LootItemDefinition>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["gold_small"] = new LootItemDefinition
-                {
-                    lootItemId = "gold_small",
-                    rewardType = LootRewardType.Gold,
-                    displayName = "Gold Cache",
-                    amount = 25
-                },
-                ["gold_medium"] = new LootItemDefinition
-                {
-                    lootItemId = "gold_medium",
-                    rewardType = LootRewardType.Gold,
-                    displayName = "Recovered Treasury",
-                    amount = 50
-                },
-                ["map_sample_operation"] = new LootItemDefinition
-                {
-                    lootItemId = "map_sample_operation",
-                    rewardType = LootRewardType.MapItem,
-                    displayName = "Sample Operation",
-                    mapDefinitionId = "sample_operation"
-                },
-                ["currency_scrap_parts_x2"] = new LootItemDefinition
-                {
-                    lootItemId = "currency_scrap_parts_x2",
-                    rewardType = LootRewardType.CurrencyItem,
-                    displayName = "Scrap Parts",
-                    currencyItemDefinitionId = "scrap_parts",
-                    amount = 2
-                },
-                ["item_field_plating"] = new LootItemDefinition
-                {
-                    lootItemId = "item_field_plating",
-                    rewardType = LootRewardType.UnitItem,
-                    displayName = "Field Plating",
-                    itemDefinitionId = "field_plating"
-                }
-            };
-        }
-
         private static Dictionary<string, LootTableDefinition> CreateDefaultLootTables()
         {
             return new Dictionary<string, LootTableDefinition>(StringComparer.OrdinalIgnoreCase)
@@ -266,10 +271,10 @@ namespace AutoBattler
                     guaranteedMaxCount = 1,
                     entries = new List<LootTableEntryDefinition>
                     {
-                        new LootTableEntryDefinition { lootItemId = "gold_medium", guaranteed = true },
-                        new LootTableEntryDefinition { lootItemId = "currency_scrap_parts_x2", dropChance = 0.75f },
-                        new LootTableEntryDefinition { lootItemId = "item_field_plating", dropChance = 0.3f },
-                        new LootTableEntryDefinition { lootItemId = "map_sample_operation", dropChance = 0.2f }
+                        new LootTableEntryDefinition { entryId = "gold_medium", rewardType = LootRewardType.Gold, displayName = "Recovered Treasury", amount = 50, guaranteed = true },
+                        new LootTableEntryDefinition { entryId = "currency_scrap_parts_x2", rewardType = LootRewardType.CurrencyItem, displayName = "Scrap Parts", currencyItemDefinitionId = "scrap_parts", amount = 2, dropChance = 0.75f },
+                        new LootTableEntryDefinition { entryId = "item_field_plating", rewardType = LootRewardType.UnitItem, displayName = "Field Plating", itemDefinitionId = "field_plating", dropChance = 0.3f },
+                        new LootTableEntryDefinition { entryId = "map_sample_operation", rewardType = LootRewardType.MapItem, displayName = "Sample Operation", mapDefinitionId = "sample_operation", dropChance = 0.2f }
                     }
                 },
                 ["enemy_unit_basic"] = new LootTableDefinition
@@ -277,8 +282,8 @@ namespace AutoBattler
                     lootTableId = "enemy_unit_basic",
                     entries = new List<LootTableEntryDefinition>
                     {
-                        new LootTableEntryDefinition { lootItemId = "gold_small", dropChance = 0.22f },
-                        new LootTableEntryDefinition { lootItemId = "currency_scrap_parts_x2", dropChance = 0.1f }
+                        new LootTableEntryDefinition { entryId = "gold_small", rewardType = LootRewardType.Gold, displayName = "Gold Cache", amount = 25, dropChance = 0.22f },
+                        new LootTableEntryDefinition { entryId = "currency_scrap_parts_x2", rewardType = LootRewardType.CurrencyItem, displayName = "Scrap Parts", currencyItemDefinitionId = "scrap_parts", amount = 2, dropChance = 0.1f }
                     }
                 },
                 ["enemy_elite_tank"] = new LootTableDefinition
@@ -287,8 +292,8 @@ namespace AutoBattler
                     guaranteedMaxCount = 1,
                     entries = new List<LootTableEntryDefinition>
                     {
-                        new LootTableEntryDefinition { lootItemId = "gold_small", guaranteed = true },
-                        new LootTableEntryDefinition { lootItemId = "item_field_plating", dropChance = 0.25f }
+                        new LootTableEntryDefinition { entryId = "gold_small", rewardType = LootRewardType.Gold, displayName = "Gold Cache", amount = 25, guaranteed = true },
+                        new LootTableEntryDefinition { entryId = "item_field_plating", rewardType = LootRewardType.UnitItem, displayName = "Field Plating", itemDefinitionId = "field_plating", dropChance = 0.25f }
                     }
                 }
             };
@@ -303,7 +308,18 @@ namespace AutoBattler
                     itemDefinitionId = "field_plating",
                     displayName = "Field Plating",
                     description = "Recovered armor plating ready for refit.",
-                    itemSlotType = "Utility"
+                    itemType = "Utility",
+                    itemSlotType = "Utility",
+                    tier = 1,
+                    effects = new List<ItemEffectDefinition>
+                    {
+                        new ItemEffectDefinition
+                        {
+                            statKey = "armor",
+                            operation = ItemEffectOperation.Add,
+                            value = 1f
+                        }
+                    }
                 }
             };
         }
@@ -316,9 +332,73 @@ namespace AutoBattler
                 {
                     currencyItemDefinitionId = "scrap_parts",
                     displayName = "Scrap Parts",
-                    description = "General-purpose battlefield salvage."
+                    description = "General-purpose battlefield salvage.",
+                    actionType = CurrencyActionType.AddModifiers,
+                    minExistingModifiers = 0,
+                    maxExistingModifiers = 0,
+                    minAddedModifiers = 1,
+                    maxAddedModifiers = 2,
+                    maxModifiersPerItem = 2
                 }
             };
         }
+
+        private static Dictionary<string, ModifierTemplateDefinition> CreateDefaultModifierTemplates()
+        {
+            return new Dictionary<string, ModifierTemplateDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["utility_t1_health"] = new ModifierTemplateDefinition
+                {
+                    modifierTemplateId = "utility_t1_health",
+                    displayName = "Reinforced Lining",
+                    description = "Adds layered interior protection.",
+                    modifierType = ModifierType.MaxHealth,
+                    itemType = "Utility",
+                    tier = 1,
+                    weight = 10,
+                    rollAMin = 1,
+                    rollAMax = 4
+                },
+                ["utility_t1_armor"] = new ModifierTemplateDefinition
+                {
+                    modifierTemplateId = "utility_t1_armor",
+                    displayName = "Plated Bracing",
+                    description = "Adds extra armor support.",
+                    modifierType = ModifierType.Armor,
+                    itemType = "Utility",
+                    tier = 1,
+                    weight = 8,
+                    rollAMin = 1,
+                    rollAMax = 2
+                },
+                ["utility_t1_damage"] = new ModifierTemplateDefinition
+                {
+                    modifierTemplateId = "utility_t1_damage",
+                    displayName = "Reactive Charge Matrix",
+                    description = "Adds a fluctuating damage band.",
+                    modifierType = ModifierType.Damage,
+                    itemType = "Utility",
+                    tier = 1,
+                    weight = 4,
+                    rollAMin = 1,
+                    rollAMax = 2,
+                    rollBMin = 3,
+                    rollBMax = 4
+                },
+                ["legacy_field_plating_armor_boost"] = new ModifierTemplateDefinition
+                {
+                    modifierTemplateId = "legacy_field_plating_armor_boost",
+                    displayName = "Legacy Armor Reinforcement",
+                    description = "Converted from a previous item upgrade.",
+                    modifierType = ModifierType.Armor,
+                    itemType = "Utility",
+                    tier = 1,
+                    weight = 1,
+                    rollAMin = 1,
+                    rollAMax = 1
+                }
+            };
+        }
+
     }
 }

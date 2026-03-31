@@ -213,6 +213,8 @@ namespace AutoBattler
                 Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(source, "accuracy", template.Accuracy)),
                 Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(source, "fireReliability", template.FireReliability)),
                 Mathf.Clamp01(JsonDataHelper.GetModifiedFloat(source, "moveReliability", template.MoveReliability)),
+                0,
+                0,
                 JsonDataHelper.GetString(source, "navigationAgentType", template.NavigationAgentType),
                 resolvedTerrainSpeedProfile,
                 resolvedTerrainPathCostProfile,

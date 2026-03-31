@@ -37,6 +37,8 @@ namespace AutoBattler
             GUILayout.Label(redSummary, bodyStyle);
 
             GUILayout.Space(8f);
+            DrawGameSpeedControls();
+            GUILayout.Space(8f);
             if (BattleScenario.Instance != null)
             {
                 var missionSummary = "Mission: " + BattleScenario.Instance.MissionName;
@@ -73,6 +75,32 @@ namespace AutoBattler
             if (BattleStateManager.Instance != null && BattleStateManager.Instance.IsBattleOver)
             {
                 DrawBattleResultSplash();
+            }
+        }
+
+        private void DrawGameSpeedControls()
+        {
+            if (GameSpeedController.Instance == null)
+            {
+                return;
+            }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Speed: " + GameSpeedController.Instance.CurrentSpeed.ToString("0.0") + "x", bodyStyle, GUILayout.Width(92f));
+
+            DrawSpeedButton("0.5x", 0.5f);
+            DrawSpeedButton("1x", 1f);
+            DrawSpeedButton("2x", 2f);
+            DrawSpeedButton("4x", 4f);
+            GUILayout.EndHorizontal();
+            GUILayout.Label("Keys: 1-4 or +/-", bodyStyle);
+        }
+
+        private void DrawSpeedButton(string label, float speed)
+        {
+            if (GUILayout.Button(label, GUILayout.Width(42f)))
+            {
+                GameSpeedController.Instance.SetSpeedByValue(speed);
             }
         }
 

@@ -4,7 +4,13 @@
       "currencyItemDefinitionId": "scrap_parts",
       "displayName": "Scrap Parts",
       "description": "General-purpose battlefield salvage.",
-      "iconId": ""
+      "iconId": "",
+      "actionType": "AddModifiers",
+      "minExistingModifiers": 0,
+      "maxExistingModifiers": 0,
+      "minAddedModifiers": 1,
+      "maxAddedModifiers": 2,
+      "maxModifiersPerItem": 2
     }
   ]
 }

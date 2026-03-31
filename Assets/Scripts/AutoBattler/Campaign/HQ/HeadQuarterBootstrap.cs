@@ -34,6 +34,7 @@ namespace AutoBattler
         private Label resultLabel;
         private string selectedHexSlotId;
         private string draggedMapItemId;
+        private string draggedItemInstanceId;
         private VisualElement draggedMapGhost;
         private LootCatalogs lootCatalogs;
 
@@ -157,6 +158,7 @@ namespace AutoBattler
             openMapButton.clicked += TryOpenSelectedHex;
             clearHexButton.clicked += TryClearSelectedHex;
             RequireButton("ResultConfirmButton").clicked += ConfirmResult;
+            inventoryList.RegisterCallback<PointerUpEvent>(OnInventoryPointerUp);
         }
 
         private void BuildHexBoard()
@@ -245,18 +247,22 @@ namespace AutoBattler
             for (var i = 0; i < ownedItems.Count; i++)
             {
                 var item = ownedItems[i];
-                if (item == null)
+                if (item == null || !string.IsNullOrWhiteSpace(item.equippedToUnitCardId))
                 {
                     continue;
                 }
 
                 var displayName = item.itemDefinitionId;
+                var subtitle = "Item";
                 if (lootCatalogs != null && lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out var definition))
                 {
                     displayName = definition.displayName;
+                    subtitle = BuildOwnedItemSubtitle(item, definition);
                 }
 
-                inventoryList.Add(BuildInventoryCard(displayName, "Item", "inventory-card-item"));
+                var card = BuildOwnedInventoryItemCard(item, displayName, subtitle);
+                RegisterItemDrag(card, item, displayName);
+                inventoryList.Add(card);
             }
 
             if (inventoryList.childCount == 0)
@@ -281,6 +287,19 @@ namespace AutoBattler
 
             card.Add(title);
             card.Add(subtitle);
+            return card;
+        }
+
+        private VisualElement BuildOwnedInventoryItemCard(OwnedUnitItem item, string titleText, string subtitleText)
+        {
+            var card = BuildInventoryCard(titleText, subtitleText, "inventory-card-item");
+            var modifyButton = new Button(() => TryModifyItem(item.itemInstanceId))
+            {
+                text = "Mod"
+            };
+            modifyButton.AddToClassList("inventory-item-button");
+            modifyButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+            card.Add(modifyButton);
             return card;
         }
 
@@ -328,11 +347,14 @@ namespace AutoBattler
                 rootElement.AddToClassList("unit-card-assigned");
             }
 
+            var headerRow = new VisualElement();
+            headerRow.AddToClassList("unit-card-header");
+
             var textBlock = new VisualElement();
             textBlock.AddToClassList("unit-card-text");
             textBlock.Add(new Label(card.displayName) { name = "UnitName" });
             textBlock.Add(new Label(card.baseTemplateId) { name = "UnitClass" });
-            rootElement.Add(textBlock);
+            headerRow.Add(textBlock);
 
             var action = new Button(() =>
             {
@@ -359,7 +381,28 @@ namespace AutoBattler
                 text = assigned ? "Remove" : "Select"
             };
             action.AddToClassList("small-action-button");
-            rootElement.Add(action);
+            headerRow.Add(action);
+            rootElement.Add(headerRow);
+
+            var equippedItems = CampaignRuntimeContext.Instance.GetEquippedUnitItems(card.unitCardId);
+            var itemsRow = new VisualElement();
+            itemsRow.AddToClassList("equipped-items-row");
+            if (equippedItems.Count > 0)
+            {
+                for (var i = 0; i < equippedItems.Count; i++)
+                {
+                    itemsRow.Add(BuildEquippedItemChip(equippedItems[i]));
+                }
+            }
+            else
+            {
+                var emptyLabel = new Label("Drop item here");
+                emptyLabel.AddToClassList("equipped-item-empty");
+                itemsRow.Add(emptyLabel);
+            }
+
+            rootElement.Add(itemsRow);
+            rootElement.RegisterCallback<PointerUpEvent>(_ => TryDropDraggedItemToUnitCard(card.unitCardId));
             return rootElement;
         }
 
@@ -454,7 +497,8 @@ namespace AutoBattler
         private void RefreshTopBar()
         {
             var save = CampaignRuntimeContext.Instance.SaveData;
-            topBarLabel.text = "HEADQUARTER    XP " + save.playerExperience + "    GOLD " + save.gold + "    MAPS " + save.ownedMapItems.Count + "    CARDS " + CountLivingCards();
+            var scrapParts = CampaignRuntimeContext.Instance.GetCurrencyAmount("scrap_parts");
+            topBarLabel.text = "HEADQUARTER    XP " + save.playerExperience + "    GOLD " + save.gold + "    SCRAP " + scrapParts + "    MAPS " + save.ownedMapItems.Count + "    CARDS " + CountLivingCards();
         }
 
         private void RefreshButtons()
@@ -513,7 +557,22 @@ namespace AutoBattler
         {
             element.RegisterCallback<PointerDownEvent>(evt =>
             {
+                draggedItemInstanceId = string.Empty;
                 draggedMapItemId = mapItemId;
+                EnsureDragGhost();
+                draggedMapGhost.Q<Label>("DragLabel").text = label;
+                draggedMapGhost.style.display = DisplayStyle.Flex;
+                UpdateDragGhost(evt.position);
+                evt.StopPropagation();
+            });
+        }
+
+        private void RegisterItemDrag(VisualElement element, OwnedUnitItem item, string label)
+        {
+            element.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                draggedMapItemId = string.Empty;
+                draggedItemInstanceId = item.itemInstanceId;
                 EnsureDragGhost();
                 draggedMapGhost.Q<Label>("DragLabel").text = label;
                 draggedMapGhost.style.display = DisplayStyle.Flex;
@@ -524,7 +583,7 @@ namespace AutoBattler
 
         private void OnRootPointerMove(PointerMoveEvent evt)
         {
-            if (string.IsNullOrWhiteSpace(draggedMapItemId) || draggedMapGhost == null)
+            if ((string.IsNullOrWhiteSpace(draggedMapItemId) && string.IsNullOrWhiteSpace(draggedItemInstanceId)) || draggedMapGhost == null)
             {
                 return;
             }
@@ -548,6 +607,24 @@ namespace AutoBattler
             {
                 EndDrag();
             }
+        }
+
+        private void TryDropDraggedItemToUnitCard(string unitCardId)
+        {
+            if (string.IsNullOrWhiteSpace(draggedItemInstanceId))
+            {
+                return;
+            }
+
+            if (!CampaignRuntimeContext.Instance.TryEquipItemToUnitCard(draggedItemInstanceId, unitCardId, out var error))
+            {
+                SetStatus(error);
+                return;
+            }
+
+            SetStatus("Item equipped.");
+            RefreshAll();
+            EndDrag();
         }
 
         private void EnsureDragGhost()
@@ -575,10 +652,36 @@ namespace AutoBattler
         private void EndDrag()
         {
             draggedMapItemId = string.Empty;
+            draggedItemInstanceId = string.Empty;
             if (draggedMapGhost != null)
             {
                 draggedMapGhost.style.display = DisplayStyle.None;
             }
+        }
+
+        private void OnInventoryPointerUp(PointerUpEvent evt)
+        {
+            if (string.IsNullOrWhiteSpace(draggedItemInstanceId))
+            {
+                return;
+            }
+
+            var item = FindOwnedUnitItem(draggedItemInstanceId);
+            if (item == null || string.IsNullOrWhiteSpace(item.equippedToUnitCardId))
+            {
+                return;
+            }
+
+            if (!CampaignRuntimeContext.Instance.TryUnequipItemFromUnitCard(item.itemInstanceId, item.equippedToUnitCardId, out var error))
+            {
+                SetStatus(error);
+                return;
+            }
+
+            SetStatus("Item removed.");
+            RefreshAll();
+            EndDrag();
+            evt.StopPropagation();
         }
 
         private void OnHexClicked(string hexSlotId)
@@ -737,11 +840,78 @@ namespace AutoBattler
             return null;
         }
 
+        private OwnedUnitItem FindOwnedUnitItem(string itemInstanceId)
+        {
+            var items = CampaignRuntimeContext.Instance.SaveData.ownedUnitItems;
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (items[i] != null && string.Equals(items[i].itemInstanceId, itemInstanceId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return items[i];
+                }
+            }
+
+            return null;
+        }
+
         private VisualElement BuildPlaceholder(string text)
         {
             var placeholder = new Label(text);
             placeholder.AddToClassList("placeholder");
             return placeholder;
+        }
+
+        private VisualElement BuildEquippedItemChip(OwnedUnitItem item)
+        {
+            var chip = new VisualElement();
+            chip.AddToClassList("equipped-item-chip");
+
+            var title = item.itemDefinitionId;
+            var subtitle = "Item";
+            if (lootCatalogs != null && lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out var definition) && definition != null)
+            {
+                title = definition.displayName;
+                subtitle = BuildOwnedItemSubtitle(item, definition);
+            }
+
+            var titleLabel = new Label(title);
+            titleLabel.AddToClassList("equipped-item-chip-title");
+            chip.Add(titleLabel);
+
+            var subtitleLabel = new Label(subtitle);
+            subtitleLabel.AddToClassList("equipped-item-chip-subtitle");
+            chip.Add(subtitleLabel);
+
+            var modifyButton = new Button(() => TryModifyItem(item.itemInstanceId))
+            {
+                text = "Mod"
+            };
+            modifyButton.AddToClassList("equipped-item-chip-button");
+            modifyButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+            chip.Add(modifyButton);
+
+            RegisterItemDrag(chip, item, title);
+            return chip;
+        }
+
+        private void TryModifyItem(string itemInstanceId)
+        {
+            const string currencyItemDefinitionId = "scrap_parts";
+            if (!CampaignRuntimeContext.Instance.TryApplyItemModification(itemInstanceId, currencyItemDefinitionId, out var error))
+            {
+                SetStatus(error);
+                return;
+            }
+
+            if (lootCatalogs != null && lootCatalogs.TryGetCurrencyItemDefinition(currencyItemDefinitionId, out var currencyDefinition) && currencyDefinition != null)
+            {
+                SetStatus(currencyDefinition.displayName + " applied.");
+            }
+            else
+            {
+                SetStatus("Item modified.");
+            }
+            RefreshAll();
         }
 
         private void EnsureCamera()
@@ -760,6 +930,101 @@ namespace AutoBattler
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.1f, 0.14f, 0.16f);
             cameraObject.AddComponent<AudioListener>();
+        }
+
+        private string BuildOwnedItemSubtitle(OwnedUnitItem item, ItemDefinition definition)
+        {
+            var parts = new List<string>();
+            if (definition != null && !string.IsNullOrWhiteSpace(definition.itemSlotType))
+            {
+                parts.Add(definition.itemSlotType);
+            }
+
+            var baseSummary = BuildEffectSummary(definition?.effects);
+            if (!string.IsNullOrWhiteSpace(baseSummary))
+            {
+                parts.Add(baseSummary);
+            }
+
+            var modifierSummary = BuildModifierSummary(item);
+            if (!string.IsNullOrWhiteSpace(modifierSummary))
+            {
+                parts.Add("Mods: " + modifierSummary);
+            }
+
+            return string.Join("  ", parts);
+        }
+
+        private string BuildModifierSummary(OwnedUnitItem item)
+        {
+            if (item?.appliedModifiers == null || item.appliedModifiers.Count == 0 || lootCatalogs == null)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+            for (var i = 0; i < item.appliedModifiers.Count; i++)
+            {
+                var appliedModifier = item.appliedModifiers[i];
+                if (appliedModifier == null
+                    || string.IsNullOrWhiteSpace(appliedModifier.modifierTemplateId)
+                    || !lootCatalogs.TryGetModifierTemplate(appliedModifier.modifierTemplateId, out var modifier)
+                    || modifier == null)
+                {
+                    continue;
+                }
+
+                var effectSummary = BuildAppliedModifierSummary(appliedModifier);
+                parts.Add(string.IsNullOrWhiteSpace(effectSummary) ? modifier.displayName : modifier.displayName + " " + effectSummary);
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static string BuildAppliedModifierSummary(AppliedItemModifierData appliedModifier)
+        {
+            if (appliedModifier == null)
+            {
+                return string.Empty;
+            }
+
+            return appliedModifier.modifierType switch
+            {
+                ModifierType.MaxHealth => "maxHealth +" + appliedModifier.rolledValueA,
+                ModifierType.Armor => "armor +" + appliedModifier.rolledValueA,
+                ModifierType.VisionRange => "visionRange +" + appliedModifier.rolledValueA,
+                ModifierType.Speed => "speed +" + appliedModifier.rolledValueA,
+                ModifierType.Accuracy => "accuracy +" + appliedModifier.rolledValueA,
+                ModifierType.FireReliability => "fireReliability +" + appliedModifier.rolledValueA,
+                ModifierType.MoveReliability => "moveReliability +" + appliedModifier.rolledValueA,
+                ModifierType.Damage => "damage " + appliedModifier.rolledValueA + "-" + Mathf.Max(appliedModifier.rolledValueA, appliedModifier.rolledValueB),
+                _ => string.Empty
+            };
+        }
+
+        private static string BuildEffectSummary(List<ItemEffectDefinition> effects)
+        {
+            if (effects == null || effects.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+            for (var i = 0; i < effects.Count; i++)
+            {
+                var effect = effects[i];
+                if (effect == null || string.IsNullOrWhiteSpace(effect.statKey))
+                {
+                    continue;
+                }
+
+                var label = effect.operation == ItemEffectOperation.Multiply
+                    ? effect.statKey + " x" + effect.value.ToString("0.##")
+                    : effect.statKey + " +" + effect.value.ToString("0.##");
+                parts.Add(label);
+            }
+
+            return string.Join(", ", parts);
         }
 
         private void SetStatus(string message)

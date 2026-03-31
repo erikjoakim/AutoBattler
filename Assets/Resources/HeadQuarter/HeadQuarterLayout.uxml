@@ -5,27 +5,33 @@
         </ui:VisualElement>
         <ui:VisualElement name="MainBody" class="main-body">
             <ui:VisualElement name="LeftPanel" class="panel left-panel">
-                <ui:Label text="Inventory" class="panel-title" />
-                <ui:VisualElement name="MapInventoryList" class="list-container inventory-grid" />
+                <ui:VisualElement name="InventoryPanel" class="sub-panel split-sub-panel">
+                    <ui:Label text="Inventory" class="panel-title compact-panel-title" />
+                    <ui:VisualElement name="MapInventoryList" class="list-container inventory-grid" />
+                </ui:VisualElement>
+                <ui:VisualElement name="AvailableCardsPanel" class="sub-panel split-sub-panel">
+                    <ui:Label text="Available Troop Cards" class="sub-panel-title" />
+                    <ui:VisualElement name="AvailableCardsList" class="list-container" />
+                </ui:VisualElement>
             </ui:VisualElement>
             <ui:VisualElement name="CenterPanel" class="panel center-panel">
-                <ui:Label text="Operations Grid" class="panel-title" />
-                <ui:VisualElement name="BoardContainer" class="board-container" />
+                <ui:VisualElement name="OperationsPanel" class="sub-panel split-sub-panel operations-panel">
+                    <ui:Label text="Operations Grid" class="panel-title compact-panel-title" />
+                    <ui:VisualElement name="BoardContainer" class="board-container" />
+                </ui:VisualElement>
+                <ui:VisualElement name="MapBriefingPanel" class="sub-panel split-sub-panel briefing-panel">
+                    <ui:Label text="Map Briefing" class="sub-panel-title" />
+                    <ui:Label name="MapDetails" class="details-label" />
+                    <ui:VisualElement name="MissionButtons" class="button-row">
+                        <ui:Button name="OpenMapButton" text="Open Map" class="action-button primary-button" />
+                        <ui:Button name="ClearHexButton" text="Clear Hex" class="action-button secondary-button action-button-last" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
             </ui:VisualElement>
             <ui:VisualElement name="RightPanel" class="panel right-panel">
-                <ui:Label text="Map Briefing" class="panel-title" />
-                <ui:Label name="MapDetails" class="details-label" />
-                <ui:VisualElement name="MissionButtons" class="button-row">
-                    <ui:Button name="OpenMapButton" text="Open Map" class="action-button primary-button" />
-                    <ui:Button name="ClearHexButton" text="Clear Hex" class="action-button secondary-button action-button-last" />
-                </ui:VisualElement>
                 <ui:VisualElement name="SelectedCardsPanel" class="sub-panel">
                     <ui:Label text="Selected For This Map" class="sub-panel-title" />
                     <ui:VisualElement name="SelectedCardsList" class="list-container" />
-                </ui:VisualElement>
-                <ui:VisualElement name="AvailableCardsPanel" class="sub-panel">
-                    <ui:Label text="Available Troop Cards" class="sub-panel-title" />
-                    <ui:VisualElement name="AvailableCardsList" class="list-container" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

@@ -14,6 +14,16 @@ namespace AutoBattler
             return Random.value <= Mathf.Clamp01(chance);
         }
 
+        public static int RollInclusive(int minValue, int maxValue)
+        {
+            if (maxValue < minValue)
+            {
+                (minValue, maxValue) = (maxValue, minValue);
+            }
+
+            return Random.Range(minValue, maxValue + 1);
+        }
+
         public static Vector3 ResolveImpactPoint(Vector3 targetPosition, float distanceToTarget, float finalAccuracy)
         {
             finalAccuracy = Mathf.Clamp01(finalAccuracy);
