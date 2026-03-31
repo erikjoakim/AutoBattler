@@ -228,7 +228,7 @@ namespace AutoBattler
                 var count = unit.GetAmmoRemaining(i);
                 targetBuilder.AppendLine("  " + ammo.AmmoName + " [" + FormatAmmoCount(count, baseAmmoCount, richText) + "]");
                 targetBuilder.AppendLine(
-                    "    Dmg " + FormatInt(ammo.Damage, baseAmmo?.Damage, richText)
+                    "    Dmg " + FormatDamageRange(ammo.DamageMin, ammo.DamageMax, baseAmmo?.DamageMin, baseAmmo?.DamageMax, richText)
                     + "  Rad " + FormatFloat(ammo.Radius, baseAmmo?.Radius, richText)
                     + "  Rng " + FormatFloat(ammo.AttackRange, baseAmmo?.AttackRange, richText)
                     + "  Rld " + FormatFloat(ammo.ReloadTime, baseAmmo?.ReloadTime, richText));
@@ -254,6 +254,40 @@ namespace AutoBattler
                     targetBuilder.AppendLine("Path Length: " + terrainProbe.PathLength.ToString("0.0"));
                 }
             }
+        }
+
+        private static string FormatDamageRange(int valueMin, int valueMax, int? baseMin, int? baseMax, bool richText)
+        {
+            var current = valueMin == valueMax ? valueMin.ToString() : valueMin + "-" + valueMax;
+            if (!baseMin.HasValue || !baseMax.HasValue)
+            {
+                return current;
+            }
+
+            var reference = baseMin.Value == baseMax.Value ? baseMin.Value.ToString() : baseMin.Value + "-" + baseMax.Value;
+            if (valueMin == baseMin.Value && valueMax == baseMax.Value)
+            {
+                return current;
+            }
+
+            if (!richText)
+            {
+                return current + " (" + reference + ")";
+            }
+
+            var isImproved = valueMin >= baseMin.Value && valueMax >= baseMax.Value && (valueMin > baseMin.Value || valueMax > baseMax.Value);
+            var isReduced = valueMin <= baseMin.Value && valueMax <= baseMax.Value && (valueMin < baseMin.Value || valueMax < baseMax.Value);
+            if (isImproved)
+            {
+                return "<color=#7ec8ff>" + current + "</color> (" + reference + ")";
+            }
+
+            if (isReduced)
+            {
+                return "<color=#ff6d6d>" + current + "</color> (" + reference + ")";
+            }
+
+            return current + " (" + reference + ")";
         }
 
         private void UpdateTerrainProbe(Vector3 hitPoint)

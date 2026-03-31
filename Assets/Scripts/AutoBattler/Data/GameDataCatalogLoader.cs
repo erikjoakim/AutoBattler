@@ -55,7 +55,8 @@ namespace AutoBattler
                     ammoType,
                     JsonDataHelper.GetString(item, "ammoName", ammoType),
                     JsonDataHelper.GetEnum(item, "requiredUserType", UnitType.Infantry),
-                    Mathf.Max(0, JsonDataHelper.GetInt(item, "damage", 0)),
+                    ResolveAmmoDamageMin(item),
+                    ResolveAmmoDamageMax(item),
                     Mathf.Max(0f, JsonDataHelper.GetFloat(item, "radius", 0f)),
                     Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "attackRange", 3f)),
                     Mathf.Max(0.1f, JsonDataHelper.GetFloat(item, "reloadTime", 1f)),
@@ -101,6 +102,7 @@ namespace AutoBattler
                     Mathf.Clamp01(JsonDataHelper.GetFloat(item, "accuracy", 1f)),
                     Mathf.Clamp01(JsonDataHelper.GetFloat(item, "fireReliability", 1f)),
                     Mathf.Clamp01(JsonDataHelper.GetFloat(item, "moveReliability", 1f)),
+                    Mathf.Max(0f, JsonDataHelper.GetFloat(item, "threatValue", 1f)),
                     Mathf.Max(0, JsonDataHelper.GetInt(item, "purchaseCostGold", 10)),
                     JsonDataHelper.GetString(item, "navigationAgentType", string.Empty),
                     terrainSpeedProfile,
@@ -155,12 +157,15 @@ namespace AutoBattler
                 var baseDamageReliability = ammoTemplate.DamageReliability;
                 var resolvedAttackRange = Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(ammoObject, "attackRange", baseAttackRange));
                 var resolvedReloadTime = Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(ammoObject, "reloadTime", baseReloadTime));
+                var resolvedDamageMin = ResolveModifiedAmmoDamageMin(ammoObject, ammoTemplate.DamageMin);
+                var resolvedDamageMax = ResolveModifiedAmmoDamageMax(ammoObject, ammoTemplate.DamageMax, resolvedDamageMin);
                 var resolvedDefinition = new AmmoDefinition(
                     JsonDataHelper.GetString(ammoObject, "ammoName", ammoTemplate.AmmoName),
                     ammoObject != null && ammoObject.ContainsKey("requiredUserType")
                         ? JsonDataHelper.GetEnum(ammoObject, "requiredUserType", ammoTemplate.RequiredUserType)
                         : ammoTemplate.RequiredUserType,
-                    Mathf.Max(0, JsonDataHelper.GetModifiedInt(ammoObject, "damage", ammoTemplate.Damage)),
+                    resolvedDamageMin,
+                    resolvedDamageMax,
                     Mathf.Max(0f, JsonDataHelper.GetModifiedFloat(ammoObject, "radius", ammoTemplate.Radius)),
                     resolvedAttackRange,
                     resolvedReloadTime,
@@ -181,6 +186,60 @@ namespace AutoBattler
         {
             var resolvedCount = JsonDataHelper.GetModifiedInt(ammoObject, "ammunitionCount", baseAmmoCount);
             return resolvedCount < 0 ? -1 : resolvedCount;
+        }
+
+        private static int ResolveAmmoDamageMin(Dictionary<string, object> source)
+        {
+            var legacyDamage = Mathf.Max(0, JsonDataHelper.GetInt(source, "damage", 0));
+            return Mathf.Max(0, JsonDataHelper.GetInt(source, "damageMin", legacyDamage));
+        }
+
+        private static int ResolveAmmoDamageMax(Dictionary<string, object> source)
+        {
+            var minDamage = ResolveAmmoDamageMin(source);
+            var legacyDamage = Mathf.Max(0, JsonDataHelper.GetInt(source, "damage", minDamage));
+            return Mathf.Max(minDamage, JsonDataHelper.GetInt(source, "damageMax", legacyDamage));
+        }
+
+        private static int ResolveModifiedAmmoDamageMin(Dictionary<string, object> source, int baseDamageMin)
+        {
+            if (source == null)
+            {
+                return Mathf.Max(0, baseDamageMin);
+            }
+
+            if (source.ContainsKey("damageMin"))
+            {
+                return Mathf.Max(0, JsonDataHelper.GetModifiedInt(source, "damageMin", baseDamageMin));
+            }
+
+            if (source.ContainsKey("damage"))
+            {
+                return Mathf.Max(0, JsonDataHelper.GetModifiedInt(source, "damage", baseDamageMin));
+            }
+
+            return Mathf.Max(0, baseDamageMin);
+        }
+
+        private static int ResolveModifiedAmmoDamageMax(Dictionary<string, object> source, int baseDamageMax, int resolvedDamageMin)
+        {
+            if (source == null)
+            {
+                return Mathf.Max(resolvedDamageMin, baseDamageMax);
+            }
+
+            if (source.ContainsKey("damageMax"))
+            {
+                return Mathf.Max(resolvedDamageMin, JsonDataHelper.GetModifiedInt(source, "damageMax", baseDamageMax));
+            }
+
+            if (source.ContainsKey("damage"))
+            {
+                var resolvedDamage = Mathf.Max(0, JsonDataHelper.GetModifiedInt(source, "damage", baseDamageMax));
+                return Mathf.Max(resolvedDamageMin, resolvedDamage);
+            }
+
+            return Mathf.Max(resolvedDamageMin, baseDamageMax);
         }
 
         private static TerrainSpeedProfile ParseTerrainSpeedProfile(Dictionary<string, object> source)

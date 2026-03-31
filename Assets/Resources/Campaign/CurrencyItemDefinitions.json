@@ -6,10 +6,24 @@
       "description": "General-purpose battlefield salvage.",
       "iconId": "",
       "actionType": "AddModifiers",
+      "targetTypes": ["Utility", "Weapon"],
       "minExistingModifiers": 0,
       "maxExistingModifiers": 0,
       "minAddedModifiers": 1,
       "maxAddedModifiers": 2,
+      "maxModifiersPerItem": 2
+    },
+    {
+      "currencyItemDefinitionId": "map_survey_orb",
+      "displayName": "Survey Orb",
+      "description": "A cartographic orb used to alter hostile map conditions.",
+      "iconId": "",
+      "actionType": "AddModifiers",
+      "targetTypes": ["Map"],
+      "minExistingModifiers": 0,
+      "maxExistingModifiers": 0,
+      "minAddedModifiers": 1,
+      "maxAddedModifiers": 1,
       "maxModifiersPerItem": 2
     }
   ]

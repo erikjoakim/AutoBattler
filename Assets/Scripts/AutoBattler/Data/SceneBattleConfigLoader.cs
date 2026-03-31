@@ -226,8 +226,11 @@ namespace AutoBattler
                 count = Mathf.Max(1, JsonDataHelper.GetInt(source, "count", 1)),
                 mission = resolvedMission,
                 definition = definition,
-                lootTableId = JsonDataHelper.GetString(source, "lootTableId", string.Empty)
+                lootTableId = JsonDataHelper.GetString(source, "lootTableId", string.Empty),
+                returnToHeadquartersIfSurvives = GetBool(source, "returnToHeadquartersIfSurvives", false),
+                captureAsUnitCardOnDeath = GetBool(source, "captureAsUnitCardOnDeath", false)
             };
+            unitSpawnConfig.persistentOverrideJson = BuildPersistentUnitOverrideJson(source);
 
             return true;
         }
@@ -261,19 +264,22 @@ namespace AutoBattler
                 if (baseAmmo == null)
                 {
                     resolvedAmmoCounts[i] = loadout[i].AmmunitionCount;
-                    resolvedAmmo.Add(new AmmoDefinition(ammoType, template.UnitType, 0, 0f, 0.1f, 1f, 1f, 1f));
+                    resolvedAmmo.Add(new AmmoDefinition(ammoType, template.UnitType, 0, 0, 0f, 0.1f, 1f, 1f, 1f));
                     continue;
                 }
 
                 var baseAttackRange = JsonDataHelper.GetModifiedFloat(unitAttackRangeOverride, baseAmmo.AttackRange);
                 var baseReloadTime = JsonDataHelper.GetModifiedFloat(unitReloadTimeOverride, baseAmmo.ReloadTime);
                 resolvedAmmoCounts[i] = ResolveAmmoCount(ammoOverride, loadout[i].AmmunitionCount);
+                var resolvedDamageMin = ResolveModifiedAmmoDamageMin(ammoOverride, baseAmmo.DamageMin);
+                var resolvedDamageMax = ResolveModifiedAmmoDamageMax(ammoOverride, baseAmmo.DamageMax, resolvedDamageMin);
                 resolvedAmmo.Add(new AmmoDefinition(
                     JsonDataHelper.GetString(ammoOverride, "ammoName", baseAmmo.AmmoName),
                     ammoOverride != null && ammoOverride.ContainsKey("requiredUserType")
                         ? JsonDataHelper.GetEnum(ammoOverride, "requiredUserType", baseAmmo.RequiredUserType)
                         : baseAmmo.RequiredUserType,
-                    Mathf.Max(0, JsonDataHelper.GetModifiedInt(ammoOverride, "damage", baseAmmo.Damage)),
+                    resolvedDamageMin,
+                    resolvedDamageMax,
                     Mathf.Max(0f, JsonDataHelper.GetModifiedFloat(ammoOverride, "radius", baseAmmo.Radius)),
                     Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(ammoOverride, "attackRange", baseAttackRange)),
                     Mathf.Max(0.1f, JsonDataHelper.GetModifiedFloat(ammoOverride, "reloadTime", baseReloadTime)),
@@ -316,6 +322,90 @@ namespace AutoBattler
         {
             var resolvedCount = JsonDataHelper.GetModifiedInt(ammoOverride, "ammunitionCount", baseAmmoCount);
             return resolvedCount < 0 ? -1 : resolvedCount;
+        }
+
+        private static bool GetBool(Dictionary<string, object> source, string key, bool fallback)
+        {
+            if (source == null || !source.TryGetValue(key, out var value) || value == null)
+            {
+                return fallback;
+            }
+
+            return value switch
+            {
+                bool boolValue => boolValue,
+                string stringValue when bool.TryParse(stringValue, out var parsed) => parsed,
+                long longValue => longValue != 0,
+                double doubleValue => Math.Abs(doubleValue) > double.Epsilon,
+                _ => fallback
+            };
+        }
+
+        private static string BuildPersistentUnitOverrideJson(Dictionary<string, object> source)
+        {
+            if (source == null)
+            {
+                return string.Empty;
+            }
+
+            var sanitized = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in source)
+            {
+                if (string.Equals(pair.Key, "unitType", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "unitName", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "count", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "lootTableId", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "returnToHeadquartersIfSurvives", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(pair.Key, "captureAsUnitCardOnDeath", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                sanitized[pair.Key] = pair.Value;
+            }
+
+            return sanitized.Count == 0 ? string.Empty : MiniJson.Serialize(sanitized);
+        }
+
+        private static int ResolveModifiedAmmoDamageMin(Dictionary<string, object> source, int baseDamageMin)
+        {
+            if (source == null)
+            {
+                return Mathf.Max(0, baseDamageMin);
+            }
+
+            if (source.ContainsKey("damageMin"))
+            {
+                return Mathf.Max(0, JsonDataHelper.GetModifiedInt(source, "damageMin", baseDamageMin));
+            }
+
+            if (source.ContainsKey("damage"))
+            {
+                return Mathf.Max(0, JsonDataHelper.GetModifiedInt(source, "damage", baseDamageMin));
+            }
+
+            return Mathf.Max(0, baseDamageMin);
+        }
+
+        private static int ResolveModifiedAmmoDamageMax(Dictionary<string, object> source, int baseDamageMax, int resolvedDamageMin)
+        {
+            if (source == null)
+            {
+                return Mathf.Max(resolvedDamageMin, baseDamageMax);
+            }
+
+            if (source.ContainsKey("damageMax"))
+            {
+                return Mathf.Max(resolvedDamageMin, JsonDataHelper.GetModifiedInt(source, "damageMax", baseDamageMax));
+            }
+
+            if (source.ContainsKey("damage"))
+            {
+                var resolvedDamage = Mathf.Max(0, JsonDataHelper.GetModifiedInt(source, "damage", baseDamageMax));
+                return Mathf.Max(resolvedDamageMin, resolvedDamage);
+            }
+
+            return Mathf.Max(resolvedDamageMin, baseDamageMax);
         }
 
         private static int CountConfiguredUnits(SceneBattleConfig config)

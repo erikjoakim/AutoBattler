@@ -38,7 +38,8 @@
     "units": [
       {
         "unitName": "Red Guard Tank",
-        "unitType": "Guard Tank"
+        "unitType": "Guard Tank",
+        "captureAsUnitCardOnDeath": true
       },
       {
         "unitName": "Red Assault Tank",

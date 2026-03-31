@@ -34,10 +34,10 @@ namespace AutoBattler
         {
             var ammoTemplates = new Dictionary<string, GameAmmoTemplate>(StringComparer.OrdinalIgnoreCase)
             {
-                { "Tank Cannon", new GameAmmoTemplate("Tank Cannon", "Tank Cannon", UnitType.Tank, 6, 0.6f, 10f, 1.8f, 0.8f, 0.96f) },
-                { "Tank Shell", new GameAmmoTemplate("Tank Shell", "Tank Shell", UnitType.Tank, 4, 2.5f, 10f, 1.8f, 0.72f, 0.93f) },
-                { "Rifle Burst", new GameAmmoTemplate("Rifle Burst", "Rifle Burst", UnitType.Infantry, 2, 0.4f, 6f, 1.1f, 0.78f, 0.99f) },
-                { "Grenade", new GameAmmoTemplate("Grenade", "Grenade", UnitType.Infantry, 3, 1.8f, 6f, 1.1f, 0.62f, 0.95f) }
+                { "Tank Cannon", new GameAmmoTemplate("Tank Cannon", "Tank Cannon", UnitType.Tank, 6, 6, 0.6f, 10f, 1.8f, 0.8f, 0.96f) },
+                { "Tank Shell", new GameAmmoTemplate("Tank Shell", "Tank Shell", UnitType.Tank, 4, 4, 2.5f, 10f, 1.8f, 0.72f, 0.93f) },
+                { "Rifle Burst", new GameAmmoTemplate("Rifle Burst", "Rifle Burst", UnitType.Infantry, 2, 2, 0.4f, 6f, 1.1f, 0.78f, 0.99f) },
+                { "Grenade", new GameAmmoTemplate("Grenade", "Grenade", UnitType.Infantry, 3, 3, 1.8f, 6f, 1.1f, 0.62f, 0.95f) }
             };
 
             var unitTemplates = new Dictionary<string, GameUnitTemplate>(StringComparer.OrdinalIgnoreCase)
@@ -56,6 +56,7 @@ namespace AutoBattler
                         0.95f,
                         0.96f,
                         0.94f,
+                        3f,
                         10,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.3f), ("Grass", 1f), ("Mud", 0.65f), ("Rock", 0.75f)),
@@ -80,6 +81,7 @@ namespace AutoBattler
                         1f,
                         0.98f,
                         0.9f,
+                        3.6f,
                         18,
                         "TankAgent",
                         CreateTerrainSpeedProfile(("Road", 1.35f), ("Grass", 1f), ("Mud", 0.6f), ("Rock", 0.75f)),
@@ -104,6 +106,7 @@ namespace AutoBattler
                         0.98f,
                         0.99f,
                         0.97f,
+                        1f,
                         10,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.15f), ("Grass", 1f), ("Mud", 0.85f), ("Rock", 0.95f)),
@@ -128,6 +131,7 @@ namespace AutoBattler
                         0.92f,
                         0.95f,
                         0.95f,
+                        1.3f,
                         12,
                         string.Empty,
                         CreateTerrainSpeedProfile(("Road", 1.2f), ("Grass", 1f), ("Mud", 0.9f), ("Rock", 1f)),
@@ -156,7 +160,8 @@ namespace AutoBattler
                 new AmmoDefinition(
                     template.AmmoName,
                     template.RequiredUserType,
-                    template.Damage,
+                    template.DamageMin,
+                    template.DamageMax,
                     template.Radius,
                     attackRange ?? template.AttackRange,
                     reloadTime ?? template.ReloadTime,
@@ -183,7 +188,8 @@ namespace AutoBattler
             string ammoType,
             string ammoName,
             UnitType requiredUserType,
-            int damage,
+            int damageMin,
+            int damageMax,
             float radius,
             float attackRange,
             float reloadTime,
@@ -193,7 +199,8 @@ namespace AutoBattler
             AmmoType = ammoType;
             AmmoName = ammoName;
             RequiredUserType = requiredUserType;
-            Damage = damage;
+            DamageMin = Mathf.Max(0, damageMin);
+            DamageMax = Mathf.Max(DamageMin, damageMax);
             Radius = radius;
             AttackRange = attackRange;
             ReloadTime = reloadTime;
@@ -204,7 +211,9 @@ namespace AutoBattler
         public string AmmoType { get; }
         public string AmmoName { get; }
         public UnitType RequiredUserType { get; }
-        public int Damage { get; }
+        public int DamageMin { get; }
+        public int DamageMax { get; }
+        public int Damage => Mathf.RoundToInt((DamageMin + DamageMax) * 0.5f);
         public float Radius { get; }
         public float AttackRange { get; }
         public float ReloadTime { get; }
@@ -242,6 +251,7 @@ namespace AutoBattler
             float accuracy,
             float fireReliability,
             float moveReliability,
+            float threatValue,
             int purchaseCostGold,
             string navigationAgentType,
             TerrainSpeedProfile terrainSpeedProfile,
@@ -259,6 +269,7 @@ namespace AutoBattler
             Accuracy = accuracy;
             FireReliability = fireReliability;
             MoveReliability = moveReliability;
+            ThreatValue = Mathf.Max(0f, threatValue);
             PurchaseCostGold = purchaseCostGold;
             NavigationAgentType = navigationAgentType;
             TerrainSpeedProfile = terrainSpeedProfile ?? TerrainSpeedProfile.Empty;
@@ -277,6 +288,7 @@ namespace AutoBattler
         public float Accuracy { get; }
         public float FireReliability { get; }
         public float MoveReliability { get; }
+        public float ThreatValue { get; }
         public int PurchaseCostGold { get; }
         public string NavigationAgentType { get; }
         public TerrainSpeedProfile TerrainSpeedProfile { get; }

@@ -9,16 +9,19 @@ namespace AutoBattler
         public CampaignCatalogs(
             Dictionary<string, MapDefinition> mapDefinitions,
             Dictionary<string, UnitCardDefinition> unitCardDefinitions,
-            StartingLoadoutDefinition startingLoadout)
+            StartingLoadoutDefinition startingLoadout,
+            Dictionary<string, MapModifierTemplateDefinition> mapModifierTemplates)
         {
             MapDefinitions = mapDefinitions ?? new Dictionary<string, MapDefinition>(StringComparer.OrdinalIgnoreCase);
             UnitCardDefinitions = unitCardDefinitions ?? new Dictionary<string, UnitCardDefinition>(StringComparer.OrdinalIgnoreCase);
             StartingLoadout = startingLoadout ?? new StartingLoadoutDefinition();
+            MapModifierTemplates = mapModifierTemplates ?? new Dictionary<string, MapModifierTemplateDefinition>(StringComparer.OrdinalIgnoreCase);
         }
 
         public Dictionary<string, MapDefinition> MapDefinitions { get; }
         public Dictionary<string, UnitCardDefinition> UnitCardDefinitions { get; }
         public StartingLoadoutDefinition StartingLoadout { get; }
+        public Dictionary<string, MapModifierTemplateDefinition> MapModifierTemplates { get; }
 
         public bool TryGetMapDefinition(string mapDefinitionId, out MapDefinition definition)
         {
@@ -29,19 +32,26 @@ namespace AutoBattler
         {
             return UnitCardDefinitions.TryGetValue(definitionId ?? string.Empty, out definition);
         }
+
+        public bool TryGetMapModifierTemplate(string mapModifierTemplateId, out MapModifierTemplateDefinition definition)
+        {
+            return MapModifierTemplates.TryGetValue(mapModifierTemplateId ?? string.Empty, out definition);
+        }
     }
 
     public static class CampaignCatalogLoader
     {
         private const string MapDefinitionsPath = "Campaign/MapDefinitions";
         private const string StartingLoadoutPath = "Campaign/StartingLoadout";
+        private const string MapModifierTemplatesPath = "Campaign/MapModifierTemplates";
 
         public static CampaignCatalogs Load()
         {
             var mapDefinitions = LoadMapDefinitions();
             var unitCardDefinitions = BuildUnitCardDefinitionsFromGameUnits();
             var startingLoadout = LoadStartingLoadout();
-            return new CampaignCatalogs(mapDefinitions, unitCardDefinitions, startingLoadout);
+            var mapModifierTemplates = LoadMapModifierTemplates();
+            return new CampaignCatalogs(mapDefinitions, unitCardDefinitions, startingLoadout, mapModifierTemplates);
         }
 
         private static Dictionary<string, MapDefinition> LoadMapDefinitions()
@@ -178,7 +188,8 @@ namespace AutoBattler
                 {
                     mapDefinitionId = mapDefinitionId,
                     count = Mathf.Max(1, JsonDataHelper.GetInt(item, "count", 1)),
-                    instanceNamePrefix = JsonDataHelper.GetString(item, "instanceNamePrefix", string.Empty)
+                    instanceNamePrefix = JsonDataHelper.GetString(item, "instanceNamePrefix", string.Empty),
+                    appliedMapModifierTemplateIds = GetStringList(item, "appliedMapModifierTemplateIds")
                 });
             }
 
@@ -206,7 +217,29 @@ namespace AutoBattler
                 });
             }
 
-            if (loadout.startingMaps.Count == 0 && loadout.startingUnitCards.Count == 0)
+            var startingCurrencyItems = JsonDataHelper.GetArray(root, "startingCurrencyItems");
+            for (var i = 0; i < startingCurrencyItems.Count; i++)
+            {
+                var item = JsonDataHelper.AsObject(startingCurrencyItems[i]);
+                if (item == null)
+                {
+                    continue;
+                }
+
+                var currencyItemDefinitionId = JsonDataHelper.GetString(item, "currencyItemDefinitionId", string.Empty);
+                if (string.IsNullOrWhiteSpace(currencyItemDefinitionId))
+                {
+                    continue;
+                }
+
+                loadout.startingCurrencyItems.Add(new StartingCurrencyItemEntry
+                {
+                    currencyItemDefinitionId = currencyItemDefinitionId,
+                    amount = Mathf.Max(1, JsonDataHelper.GetInt(item, "amount", 1))
+                });
+            }
+
+            if (loadout.startingMaps.Count == 0 && loadout.startingUnitCards.Count == 0 && loadout.startingCurrencyItems.Count == 0)
             {
                 return CreateDefaultStartingLoadout();
             }
@@ -250,8 +283,16 @@ namespace AutoBattler
             loadout.startingMaps.Add(new StartingMapEntry
             {
                 mapDefinitionId = "sample_operation",
-                count = 3,
+                count = 2,
                 instanceNamePrefix = "Sample Operation"
+            });
+
+            loadout.startingMaps.Add(new StartingMapEntry
+            {
+                mapDefinitionId = "sample_operation",
+                count = 1,
+                instanceNamePrefix = "Reinforced Sample Operation",
+                appliedMapModifierTemplateIds = new List<string> { "enemy_all_health_t1" }
             });
 
             loadout.startingUnitCards.Add(new StartingUnitCardEntry
@@ -261,7 +302,177 @@ namespace AutoBattler
                 displayNamePrefix = "Rook"
             });
 
+            loadout.startingCurrencyItems.Add(new StartingCurrencyItemEntry
+            {
+                currencyItemDefinitionId = "map_survey_orb",
+                amount = 2
+            });
+
             return loadout;
+        }
+
+        private static Dictionary<string, MapModifierTemplateDefinition> LoadMapModifierTemplates()
+        {
+            var asset = Resources.Load<TextAsset>(MapModifierTemplatesPath);
+            if (asset == null)
+            {
+                return CreateDefaultMapModifierTemplates();
+            }
+
+            var root = JsonDataHelper.AsObject(MiniJson.Deserialize(asset.text));
+            var items = JsonDataHelper.GetArray(root, "modifiers");
+            var definitions = new Dictionary<string, MapModifierTemplateDefinition>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = JsonDataHelper.AsObject(items[i]);
+                if (item == null)
+                {
+                    continue;
+                }
+
+                var modifierId = JsonDataHelper.GetString(item, "mapModifierTemplateId", string.Empty);
+                if (string.IsNullOrWhiteSpace(modifierId))
+                {
+                    continue;
+                }
+
+                var template = new MapModifierTemplateDefinition
+                {
+                    mapModifierTemplateId = modifierId,
+                    displayName = JsonDataHelper.GetString(item, "displayName", modifierId),
+                    description = JsonDataHelper.GetString(item, "description", string.Empty),
+                    tier = Mathf.Max(1, JsonDataHelper.GetInt(item, "tier", 1)),
+                    weight = Mathf.Max(1, JsonDataHelper.GetInt(item, "weight", 1)),
+                    targetScope = JsonDataHelper.GetEnum(item, "targetScope", MapModifierTargetScope.RedTeam),
+                    selectors = ParseMapModifierSelectors(item),
+                    threatDeltaOverride = JsonDataHelper.GetFloat(item, "threatDeltaOverride", -1f)
+                };
+
+                var effectObjects = JsonDataHelper.GetArray(item, "effects");
+                for (var effectIndex = 0; effectIndex < effectObjects.Count; effectIndex++)
+                {
+                    var effectObject = JsonDataHelper.AsObject(effectObjects[effectIndex]);
+                    if (effectObject == null)
+                    {
+                        continue;
+                    }
+
+                    template.effects.Add(new MapModifierEffectTemplateDefinition
+                    {
+                        effectType = JsonDataHelper.GetEnum(effectObject, "effectType", MapModifierEffectType.ModifyUnitStat),
+                        statKey = JsonDataHelper.GetString(effectObject, "statKey", string.Empty),
+                        operation = JsonDataHelper.GetEnum(effectObject, "operation", MapModifierOperation.Add),
+                        minValue = JsonDataHelper.GetInt(effectObject, "minValue", 0),
+                        maxValue = JsonDataHelper.GetInt(effectObject, "maxValue", JsonDataHelper.GetInt(effectObject, "minValue", 0)),
+                        ammoType = JsonDataHelper.GetString(effectObject, "ammoType", string.Empty),
+                        replacementUnitType = JsonDataHelper.GetString(effectObject, "replacementUnitType", string.Empty),
+                        maxAffectedEntries = Mathf.Max(0, JsonDataHelper.GetInt(effectObject, "maxAffectedEntries", 0))
+                    });
+                }
+
+                definitions[modifierId] = template;
+            }
+
+            return definitions.Count > 0 ? definitions : CreateDefaultMapModifierTemplates();
+        }
+
+        private static MapModifierSelectorDefinition ParseMapModifierSelectors(Dictionary<string, object> item)
+        {
+            var selectorsObject = JsonDataHelper.AsObject(item != null && item.TryGetValue("selectors", out var value) ? value : null);
+            if (selectorsObject == null)
+            {
+                return new MapModifierSelectorDefinition();
+            }
+
+            return new MapModifierSelectorDefinition
+            {
+                all = GetBool(selectorsObject, "all", !selectorsObject.ContainsKey("unitType")),
+                unitType = JsonDataHelper.GetString(selectorsObject, "unitType", string.Empty)
+            };
+        }
+
+        private static Dictionary<string, MapModifierTemplateDefinition> CreateDefaultMapModifierTemplates()
+        {
+            var templates = new Dictionary<string, MapModifierTemplateDefinition>(StringComparer.OrdinalIgnoreCase);
+
+            templates["enemy_all_health_t1"] = new MapModifierTemplateDefinition
+            {
+                mapModifierTemplateId = "enemy_all_health_t1",
+                displayName = "Reinforced Enemy Forces",
+                description = "All enemy units gain extra health.",
+                tier = 1,
+                weight = 10,
+                targetScope = MapModifierTargetScope.RedTeam,
+                selectors = new MapModifierSelectorDefinition { all = true },
+                effects = new List<MapModifierEffectTemplateDefinition>
+                {
+                    new MapModifierEffectTemplateDefinition
+                    {
+                        effectType = MapModifierEffectType.ModifyUnitStat,
+                        statKey = "maxHealth",
+                        operation = MapModifierOperation.Add,
+                        minValue = 2,
+                        maxValue = 4
+                    }
+                }
+            };
+
+            templates["enemy_guard_to_raider_t1"] = new MapModifierTemplateDefinition
+            {
+                mapModifierTemplateId = "enemy_guard_to_raider_t1",
+                displayName = "Raider Deployment",
+                description = "Some enemy guard infantry are replaced by raiders.",
+                tier = 1,
+                weight = 6,
+                targetScope = MapModifierTargetScope.RedTeam,
+                selectors = new MapModifierSelectorDefinition { all = false, unitType = "Guard Infantry" },
+                effects = new List<MapModifierEffectTemplateDefinition>
+                {
+                    new MapModifierEffectTemplateDefinition
+                    {
+                        effectType = MapModifierEffectType.ReplaceUnitType,
+                        replacementUnitType = "Raider Infantry",
+                        maxAffectedEntries = 2
+                    }
+                }
+            };
+
+            return templates;
+        }
+
+        private static List<string> GetStringList(Dictionary<string, object> source, string key)
+        {
+            var values = new List<string>();
+            var items = JsonDataHelper.GetArray(source, key);
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (items[i] is string stringValue && !string.IsNullOrWhiteSpace(stringValue))
+                {
+                    values.Add(stringValue);
+                }
+            }
+
+            return values;
+        }
+
+        private static bool GetBool(Dictionary<string, object> source, string key, bool fallback)
+        {
+            if (source == null || !source.TryGetValue(key, out var value) || value == null)
+            {
+                return fallback;
+            }
+
+            if (value is bool booleanValue)
+            {
+                return booleanValue;
+            }
+
+            if (value is string stringValue && bool.TryParse(stringValue, out var parsed))
+            {
+                return parsed;
+            }
+
+            return fallback;
         }
     }
 }

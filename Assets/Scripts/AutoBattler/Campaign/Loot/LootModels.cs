@@ -68,7 +68,7 @@ namespace AutoBattler
         public string displayName;
         public string description;
         public ModifierType modifierType = ModifierType.MaxHealth;
-        public string itemType;
+        public List<string> itemTypes = new List<string>();
         public int tier = 1;
         public int weight = 1;
         public int rollAMin;
@@ -85,6 +85,7 @@ namespace AutoBattler
         public string description;
         public string iconId;
         public CurrencyActionType actionType = CurrencyActionType.None;
+        public List<string> targetTypes = new List<string>();
         public int minExistingModifiers;
         public int maxExistingModifiers;
         public int minAddedModifiers = 1;

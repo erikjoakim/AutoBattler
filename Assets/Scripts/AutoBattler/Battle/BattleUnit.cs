@@ -38,6 +38,9 @@ namespace AutoBattler
         public string NavigationPathStatus => navigationAgent != null && navigationAgent.hasPath ? navigationAgent.pathStatus.ToString() : "NoPath";
         public string OwnedUnitCardId { get; private set; }
         public string LootTableId { get; private set; }
+        public bool ReturnToHeadquartersIfSurvives { get; private set; }
+        public bool CaptureAsUnitCardOnDeath { get; private set; }
+        public string PersistentOverrideJson { get; private set; }
 
         public void Initialize(UnitDefinition definition, Team team, MissionType mission, Vector3 homePosition, Vector3 objective, string lootTableId = null)
         {
@@ -120,6 +123,13 @@ namespace AutoBattler
             OwnedUnitCardId = ownedUnitCardId;
         }
 
+        public void ConfigureCampaignTransfer(bool returnToHeadquartersIfSurvives, bool captureAsUnitCardOnDeath, string persistentOverrideJson)
+        {
+            ReturnToHeadquartersIfSurvives = returnToHeadquartersIfSurvives;
+            CaptureAsUnitCardOnDeath = captureAsUnitCardOnDeath;
+            PersistentOverrideJson = persistentOverrideJson ?? string.Empty;
+        }
+
         private void Engage(BattleUnit target)
         {
             if (target == null || !target.IsAlive)
@@ -197,7 +207,7 @@ namespace AutoBattler
                 }
 
                 var splashHits = BattleUnitRegistry.CountEnemiesInRadius(Team, target.transform.position, candidate.Radius);
-                var score = splashHits * candidate.Damage;
+                var score = splashHits * candidate.DamageMax;
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -640,7 +650,9 @@ namespace AutoBattler
 
         private int ResolveOutgoingDamage(AmmoDefinition ammo)
         {
-            var damage = ammo != null ? ammo.Damage : 0;
+            var damage = ammo == null
+                ? 0
+                : CombatRoller.RollInclusive(Mathf.Max(0, ammo.DamageMin), Mathf.Max(0, ammo.DamageMax));
             var bonusMin = unitDefinition != null ? unitDefinition.OutgoingDamageBonusMin : 0;
             var bonusMax = unitDefinition != null ? unitDefinition.OutgoingDamageBonusMax : 0;
             if (bonusMax <= 0)

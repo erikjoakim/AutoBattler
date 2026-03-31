@@ -252,6 +252,7 @@ namespace AutoBattler
                 var card = FindUnitCard(slot.selectedUnitCardIds[i]);
                 if (card != null && card.status != UnitCardStatus.Dead)
                 {
+                    RefundDeploymentGold(card);
                     card.status = UnitCardStatus.Available;
                     card.assignedHexSlotId = string.Empty;
                 }
@@ -290,6 +291,19 @@ namespace AutoBattler
 
             if (!slot.selectedUnitCardIds.Contains(card.unitCardId))
             {
+                var fieldingCost = GetFieldingGoldCost(card);
+                if (fieldingCost > 0)
+                {
+                    if (saveData.gold < fieldingCost)
+                    {
+                        error = "Not enough gold to field " + card.displayName + ". Cost: " + fieldingCost + ".";
+                        return false;
+                    }
+
+                    saveData.gold -= fieldingCost;
+                    card.deploymentGoldCostPaid = fieldingCost;
+                }
+
                 slot.selectedUnitCardIds.Add(card.unitCardId);
             }
 
@@ -313,6 +327,7 @@ namespace AutoBattler
             slot.selectedUnitCardIds.Remove(unitCardId);
             if (card.status != UnitCardStatus.Dead)
             {
+                RefundDeploymentGold(card);
                 card.status = UnitCardStatus.Available;
                 card.assignedHexSlotId = string.Empty;
             }
@@ -399,9 +414,80 @@ namespace AutoBattler
                 return false;
             }
 
+            if (currencyDefinition.targetTypes != null
+                && currencyDefinition.targetTypes.Count > 0
+                && !ContainsIgnoreCase(currencyDefinition.targetTypes, definition.itemType))
+            {
+                error = "That currency cannot be used on " + definition.itemType + " items.";
+                return false;
+            }
+
             return currencyDefinition.actionType switch
             {
                 CurrencyActionType.AddModifiers => TryApplyAddModifiersCurrency(item, definition, currencyDefinition, out error),
+                _ => UnsupportedCurrencyAction(currencyDefinition, out error)
+            };
+        }
+
+        public bool TryBuildResolvedUnitSpawnForCard(string unitCardId, out UnitSpawnConfig unitSpawn)
+        {
+            unitSpawn = null;
+            var ownedCard = FindUnitCard(unitCardId);
+            if (ownedCard == null || ownedCard.status == UnitCardStatus.Dead)
+            {
+                return false;
+            }
+
+            var catalog = GameDataCatalogLoader.Load();
+            if (!catalog.TryGetUnitTemplate(ownedCard.baseTemplateId, out var template))
+            {
+                return false;
+            }
+
+            unitSpawn = BuildUnitSpawnConfigFromOwnedCard(catalog, template, ownedCard);
+            if (unitSpawn == null)
+            {
+                return false;
+            }
+
+            ApplyEquippedItemEffects(ownedCard, unitSpawn);
+            unitSpawn.ownedUnitCardId = ownedCard.unitCardId;
+            return true;
+        }
+
+        public bool TryApplyMapModification(string mapItemId, string currencyItemDefinitionId, out string error)
+        {
+            error = string.Empty;
+            var mapItem = FindMapItem(mapItemId);
+            if (mapItem == null)
+            {
+                error = "Unable to find the selected map.";
+                return false;
+            }
+
+            if (catalogs == null || !catalogs.TryGetMapDefinition(mapItem.mapDefinitionId, out var mapDefinition) || mapDefinition == null)
+            {
+                error = "The selected map definition was not found.";
+                return false;
+            }
+
+            if (!lootCatalogs.TryGetCurrencyItemDefinition(currencyItemDefinitionId, out var currencyDefinition) || currencyDefinition == null)
+            {
+                error = "The selected currency definition was not found.";
+                return false;
+            }
+
+            if (currencyDefinition.targetTypes != null
+                && currencyDefinition.targetTypes.Count > 0
+                && !ContainsIgnoreCase(currencyDefinition.targetTypes, "Map"))
+            {
+                error = "That currency cannot be used on maps.";
+                return false;
+            }
+
+            return currencyDefinition.actionType switch
+            {
+                CurrencyActionType.AddModifiers => TryApplyAddModifiersCurrencyToMap(mapItem, mapDefinition, currencyDefinition, out error),
                 _ => UnsupportedCurrencyAction(currencyDefinition, out error)
             };
         }
@@ -462,6 +548,69 @@ namespace AutoBattler
             if (addedCount <= 0)
             {
                 error = "No valid modifier could be applied.";
+                return false;
+            }
+
+            Save();
+            return true;
+        }
+
+        private bool TryApplyAddModifiersCurrencyToMap(OwnedMapItem mapItem, MapDefinition mapDefinition, CurrencyItemDefinition currencyDefinition, out string error)
+        {
+            error = string.Empty;
+            if (mapItem == null || mapDefinition == null || currencyDefinition == null || catalogs == null)
+            {
+                error = "Unable to apply that currency to the selected map.";
+                return false;
+            }
+
+            mapItem.appliedMapModifiers ??= new List<AppliedMapModifierData>();
+            var existingCount = mapItem.appliedMapModifiers.Count;
+            if (existingCount < currencyDefinition.minExistingModifiers || existingCount > currencyDefinition.maxExistingModifiers)
+            {
+                error = "That currency cannot be used on a map with the current number of modifiers.";
+                return false;
+            }
+
+            if (existingCount >= currencyDefinition.maxModifiersPerItem)
+            {
+                error = "That map cannot hold more modifiers.";
+                return false;
+            }
+
+            var candidates = BuildMapModifierTemplatePool(mapItem, mapDefinition);
+            if (candidates.Count == 0)
+            {
+                error = "No valid map modifier templates matched that map.";
+                return false;
+            }
+
+            if (!TrySpendCurrency(currencyDefinition.currencyItemDefinitionId, 1))
+            {
+                error = "Not enough " + currencyDefinition.currencyItemDefinitionId + ".";
+                return false;
+            }
+
+            var addCount = UnityEngine.Random.Range(currencyDefinition.minAddedModifiers, currencyDefinition.maxAddedModifiers + 1);
+            var remainingCapacity = Mathf.Max(0, currencyDefinition.maxModifiersPerItem - existingCount);
+            addCount = Mathf.Clamp(addCount, 0, remainingCapacity);
+            var addedCount = 0;
+            for (var addIndex = 0; addIndex < addCount; addIndex++)
+            {
+                var template = SelectWeightedMapModifierTemplate(candidates);
+                if (template == null)
+                {
+                    break;
+                }
+
+                mapItem.appliedMapModifiers.Add(InstantiateMapModifier(template));
+                candidates.Remove(template);
+                addedCount++;
+            }
+
+            if (addedCount <= 0)
+            {
+                error = "No valid map modifier could be applied.";
                 return false;
             }
 
@@ -531,6 +680,12 @@ namespace AutoBattler
             {
                 return;
             }
+
+            config.redTeam ??= new TeamConfig { units = Array.Empty<UnitSpawnConfig>() };
+            var baseThreat = CalculateTeamThreat(config.redTeam.units);
+            ApplyMapModifiersToMission(config);
+            var modifiedThreat = CalculateTeamThreat(config.redTeam.units);
+            activeMission.rewardProfile = BuildRewardProfile(baseThreat, modifiedThreat);
 
             var extraBlueUnits = BuildMissionBlueUnitCards(activeMission.selectedUnitCardIds);
             if (extraBlueUnits.Count == 0)
@@ -609,6 +764,7 @@ namespace AutoBattler
                     continue;
                 }
 
+                card.deploymentGoldCostPaid = 0;
                 card.assignedHexSlotId = string.Empty;
                 card.timesDeployed++;
                 if (deadCards.Contains(card.unitCardId))
@@ -627,6 +783,7 @@ namespace AutoBattler
             }
 
             ApplyClaimedLoot(pendingBattleResult.claimedLoot);
+            ApplyAwardedUnitCards(pendingBattleResult.awardedUnitCards);
             saveData.lastResolvedBattleResult = pendingBattleResult;
             pendingBattleResult = null;
             activeMission = null;
@@ -686,6 +843,681 @@ namespace AutoBattler
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.1f, 0.14f, 0.16f);
             cameraObject.AddComponent<AudioListener>();
+        }
+
+        private void ApplyMapModifiersToMission(SceneBattleConfig config)
+        {
+            var mapItem = activeMission == null ? null : FindMapItem(activeMission.mapItemId);
+            if (config?.redTeam == null || mapItem?.appliedMapModifiers == null || mapItem.appliedMapModifiers.Count == 0)
+            {
+                return;
+            }
+
+            var enemyUnits = new List<UnitSpawnConfig>(config.redTeam.units ?? Array.Empty<UnitSpawnConfig>());
+            for (var i = 0; i < mapItem.appliedMapModifiers.Count; i++)
+            {
+                ApplyMapModifierEffects(enemyUnits, mapItem.appliedMapModifiers[i], MapModifierEffectType.AdjustUnitCount, MapModifierEffectType.ReplaceUnitType);
+            }
+
+            for (var i = 0; i < mapItem.appliedMapModifiers.Count; i++)
+            {
+                ApplyMapModifierEffects(enemyUnits, mapItem.appliedMapModifiers[i], MapModifierEffectType.ModifyUnitStat);
+            }
+
+            for (var i = 0; i < mapItem.appliedMapModifiers.Count; i++)
+            {
+                ApplyMapModifierEffects(enemyUnits, mapItem.appliedMapModifiers[i], MapModifierEffectType.ModifyAmmoStat);
+            }
+
+            enemyUnits.RemoveAll(unit => unit == null || unit.count <= 0 || unit.definition == null);
+            config.redTeam.units = enemyUnits.ToArray();
+
+            Debug.Log("Applied map modifiers to " + activeMission.mapDefinitionId + ": " + string.Join(", ", BuildMapModifierDebugLabels(mapItem.appliedMapModifiers)));
+        }
+
+        private void ApplyMapModifierEffects(List<UnitSpawnConfig> units, AppliedMapModifierData modifier, params MapModifierEffectType[] supportedEffectTypes)
+        {
+            if (units == null
+                || modifier == null
+                || modifier.targetScope != MapModifierTargetScope.RedTeam
+                || modifier.effects == null
+                || modifier.effects.Count == 0)
+            {
+                return;
+            }
+
+            for (var effectIndex = 0; effectIndex < modifier.effects.Count; effectIndex++)
+            {
+                var effect = modifier.effects[effectIndex];
+                if (effect == null || Array.IndexOf(supportedEffectTypes, effect.effectType) < 0)
+                {
+                    continue;
+                }
+
+                var targetIndexes = GetMatchingUnitIndexes(units, modifier.selectors, effect.maxAffectedEntries);
+                if (targetIndexes.Count == 0)
+                {
+                    continue;
+                }
+
+                switch (effect.effectType)
+                {
+                    case MapModifierEffectType.AdjustUnitCount:
+                        ApplyAdjustUnitCount(units, targetIndexes, effect);
+                        break;
+                    case MapModifierEffectType.ReplaceUnitType:
+                        ApplyReplaceUnitType(units, targetIndexes, effect);
+                        break;
+                    case MapModifierEffectType.ModifyUnitStat:
+                        ApplyModifyUnitStat(units, targetIndexes, effect);
+                        break;
+                    case MapModifierEffectType.ModifyAmmoStat:
+                        ApplyModifyAmmoStat(units, targetIndexes, effect);
+                        break;
+                }
+            }
+        }
+
+        private static List<int> GetMatchingUnitIndexes(List<UnitSpawnConfig> units, MapModifierSelectorDefinition selectors, int maxAffectedEntries)
+        {
+            var results = new List<int>();
+            if (units == null)
+            {
+                return results;
+            }
+
+            var allowAll = selectors == null || selectors.all || string.IsNullOrWhiteSpace(selectors.unitType);
+            for (var i = 0; i < units.Count; i++)
+            {
+                var unit = units[i];
+                if (unit?.definition == null)
+                {
+                    continue;
+                }
+
+                if (!allowAll
+                    && !string.Equals(unit.definition.TemplateId, selectors.unitType, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                results.Add(i);
+                if (maxAffectedEntries > 0 && results.Count >= maxAffectedEntries)
+                {
+                    break;
+                }
+            }
+
+            return results;
+        }
+
+        private static void ApplyAdjustUnitCount(List<UnitSpawnConfig> units, List<int> indexes, AppliedMapModifierEffectData effect)
+        {
+            for (var i = 0; i < indexes.Count; i++)
+            {
+                var unit = units[indexes[i]];
+                if (unit == null)
+                {
+                    continue;
+                }
+
+                unit.count = Mathf.Max(1, ApplyIntOperation(unit.count, effect.operation, effect.rolledValue));
+            }
+        }
+
+        private static void ApplyModifyUnitStat(List<UnitSpawnConfig> units, List<int> indexes, AppliedMapModifierEffectData effect)
+        {
+            for (var i = 0; i < indexes.Count; i++)
+            {
+                var unit = units[indexes[i]];
+                if (unit?.definition == null)
+                {
+                    continue;
+                }
+
+                var definition = unit.definition;
+                var ammunition = CloneAmmunition(definition.Ammunition);
+                var ammunitionCounts = CloneAmmunitionCounts(definition.AmmunitionCounts);
+                var updatedDefinition = BuildUpdatedUnitDefinition(
+                    definition,
+                    effect.statKey,
+                    effect.operation,
+                    effect.rolledValue,
+                    ammunitionCounts,
+                    ammunition);
+
+                if (updatedDefinition != null)
+                {
+                    unit.definition = updatedDefinition;
+                }
+            }
+        }
+
+        private static void ApplyModifyAmmoStat(List<UnitSpawnConfig> units, List<int> indexes, AppliedMapModifierEffectData effect)
+        {
+            for (var i = 0; i < indexes.Count; i++)
+            {
+                var unit = units[indexes[i]];
+                if (unit?.definition == null)
+                {
+                    continue;
+                }
+
+                var definition = unit.definition;
+                var ammunition = CloneAmmunition(definition.Ammunition);
+                var ammunitionCounts = CloneAmmunitionCounts(definition.AmmunitionCounts);
+                var changed = false;
+                for (var ammoIndex = 0; ammoIndex < ammunition.Length; ammoIndex++)
+                {
+                    var ammo = ammunition[ammoIndex];
+                    if (ammo == null)
+                    {
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(effect.ammoType)
+                        && !string.Equals(ammo.AmmoName, effect.ammoType, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    ammunition[ammoIndex] = BuildUpdatedAmmoDefinition(ammo, effect.statKey, effect.operation, effect.rolledValue);
+                    changed = true;
+                }
+
+                if (!changed)
+                {
+                    continue;
+                }
+
+                unit.definition = new UnitDefinition(
+                    definition.TemplateId,
+                    definition.UnitName,
+                    definition.UnitType,
+                    definition.MaxHealth,
+                    definition.Armor,
+                    definition.VisionRange,
+                    definition.Speed,
+                    definition.Accuracy,
+                    definition.FireReliability,
+                    definition.MoveReliability,
+                    definition.OutgoingDamageBonusMin,
+                    definition.OutgoingDamageBonusMax,
+                    definition.NavigationAgentType,
+                    definition.TerrainSpeedProfile,
+                    definition.TerrainPathCostProfile,
+                    ammunitionCounts,
+                    ammunition);
+            }
+        }
+
+        private void ApplyReplaceUnitType(List<UnitSpawnConfig> units, List<int> indexes, AppliedMapModifierEffectData effect)
+        {
+            if (string.IsNullOrWhiteSpace(effect.replacementUnitType))
+            {
+                return;
+            }
+
+            var gameCatalog = GameDataCatalogLoader.Load();
+            if (!gameCatalog.TryGetUnitTemplate(effect.replacementUnitType, out var replacementTemplate) || replacementTemplate == null)
+            {
+                Debug.LogWarning("Unknown replacement unit template in map modifier: " + effect.replacementUnitType);
+                return;
+            }
+
+            for (var i = 0; i < indexes.Count; i++)
+            {
+                var source = units[indexes[i]];
+                if (source?.definition == null)
+                {
+                    continue;
+                }
+
+                var replacementAmmo = BuildTemplateAmmunition(replacementTemplate, out var replacementCounts);
+                source.definition = replacementTemplate.BuildDefinition(source.definition.UnitName, replacementAmmo, replacementCounts);
+            }
+        }
+
+        private static AmmoDefinition[] BuildTemplateAmmunition(GameUnitTemplate template, out int[] ammunitionCounts)
+        {
+            var loadout = template.GetAmmunitionLoadout();
+            var ammunition = new AmmoDefinition[loadout.Length];
+            ammunitionCounts = new int[loadout.Length];
+            for (var i = 0; i < loadout.Length; i++)
+            {
+                ammunitionCounts[i] = loadout[i].AmmunitionCount;
+                var ammo = loadout[i].Definition;
+                ammunition[i] = ammo == null
+                    ? new AmmoDefinition(loadout[i].AmmoType, template.UnitType, 0, 0, 0f, 0.1f, 1f, 1f, 1f)
+                    : new AmmoDefinition(
+                        ammo.AmmoName,
+                        ammo.RequiredUserType,
+                        ammo.DamageMin,
+                        ammo.DamageMax,
+                        ammo.Radius,
+                        ammo.AttackRange,
+                        ammo.ReloadTime,
+                        ammo.Accuracy,
+                        ammo.DamageReliability);
+            }
+
+            return ammunition;
+        }
+
+        private static UnitDefinition BuildUpdatedUnitDefinition(
+            UnitDefinition definition,
+            string statKey,
+            MapModifierOperation operation,
+            int rolledValue,
+            int[] ammunitionCounts,
+            AmmoDefinition[] ammunition)
+        {
+            if (definition == null || string.IsNullOrWhiteSpace(statKey))
+            {
+                return null;
+            }
+
+            var maxHealth = definition.MaxHealth;
+            var armor = definition.Armor;
+            var visionRange = definition.VisionRange;
+            var speed = definition.Speed;
+            var accuracy = definition.Accuracy;
+            var fireReliability = definition.FireReliability;
+            var moveReliability = definition.MoveReliability;
+
+            switch (statKey)
+            {
+                case "maxHealth":
+                    maxHealth = Mathf.Max(1, ApplyIntOperation(maxHealth, operation, rolledValue));
+                    break;
+                case "armor":
+                    armor = Mathf.Max(0, ApplyIntOperation(armor, operation, rolledValue));
+                    break;
+                case "visionRange":
+                    visionRange = Mathf.Max(0.1f, ApplyFloatOperation(visionRange, operation, rolledValue));
+                    break;
+                case "speed":
+                    speed = Mathf.Max(0.1f, ApplyFloatOperation(speed, operation, rolledValue));
+                    break;
+                case "accuracy":
+                    accuracy = Mathf.Clamp01(ApplyFloatOperation(accuracy, operation, rolledValue));
+                    break;
+                case "fireReliability":
+                    fireReliability = Mathf.Clamp01(ApplyFloatOperation(fireReliability, operation, rolledValue));
+                    break;
+                case "moveReliability":
+                    moveReliability = Mathf.Clamp01(ApplyFloatOperation(moveReliability, operation, rolledValue));
+                    break;
+                default:
+                    return null;
+            }
+
+            return new UnitDefinition(
+                definition.TemplateId,
+                definition.UnitName,
+                definition.UnitType,
+                maxHealth,
+                armor,
+                visionRange,
+                speed,
+                accuracy,
+                fireReliability,
+                moveReliability,
+                definition.OutgoingDamageBonusMin,
+                definition.OutgoingDamageBonusMax,
+                definition.NavigationAgentType,
+                definition.TerrainSpeedProfile,
+                definition.TerrainPathCostProfile,
+                ammunitionCounts,
+                ammunition);
+        }
+
+        private static AmmoDefinition BuildUpdatedAmmoDefinition(AmmoDefinition ammo, string statKey, MapModifierOperation operation, int rolledValue)
+        {
+            if (ammo == null || string.IsNullOrWhiteSpace(statKey))
+            {
+                return ammo;
+            }
+
+            var damageMin = ammo.DamageMin;
+            var damageMax = ammo.DamageMax;
+            var radius = ammo.Radius;
+            var attackRange = ammo.AttackRange;
+            var reloadTime = ammo.ReloadTime;
+            var accuracy = ammo.Accuracy;
+            var damageReliability = ammo.DamageReliability;
+
+            switch (statKey)
+            {
+                case "damageMin":
+                    damageMin = Mathf.Max(0, ApplyIntOperation(damageMin, operation, rolledValue));
+                    damageMax = Mathf.Max(damageMin, damageMax);
+                    break;
+                case "damageMax":
+                    damageMax = Mathf.Max(damageMin, ApplyIntOperation(damageMax, operation, rolledValue));
+                    break;
+                case "radius":
+                    radius = Mathf.Max(0f, ApplyFloatOperation(radius, operation, rolledValue));
+                    break;
+                case "attackRange":
+                    attackRange = Mathf.Max(0.1f, ApplyFloatOperation(attackRange, operation, rolledValue));
+                    break;
+                case "reloadTime":
+                    reloadTime = Mathf.Max(0.1f, ApplyFloatOperation(reloadTime, operation, rolledValue));
+                    break;
+                case "accuracy":
+                    accuracy = Mathf.Clamp01(ApplyFloatOperation(accuracy, operation, rolledValue));
+                    break;
+                case "damageReliability":
+                    damageReliability = Mathf.Clamp01(ApplyFloatOperation(damageReliability, operation, rolledValue));
+                    break;
+                default:
+                    return ammo;
+            }
+
+            return new AmmoDefinition(
+                ammo.AmmoName,
+                ammo.RequiredUserType,
+                damageMin,
+                damageMax,
+                radius,
+                attackRange,
+                reloadTime,
+                accuracy,
+                damageReliability);
+        }
+
+        private static int ApplyIntOperation(int currentValue, MapModifierOperation operation, int rolledValue)
+        {
+            return operation switch
+            {
+                MapModifierOperation.Multiply => Mathf.RoundToInt(currentValue * rolledValue),
+                MapModifierOperation.Set => rolledValue,
+                _ => currentValue + rolledValue
+            };
+        }
+
+        private static float ApplyFloatOperation(float currentValue, MapModifierOperation operation, int rolledValue)
+        {
+            return operation switch
+            {
+                MapModifierOperation.Multiply => currentValue * rolledValue,
+                MapModifierOperation.Set => rolledValue,
+                _ => currentValue + rolledValue
+            };
+        }
+
+        private static AmmoDefinition[] CloneAmmunition(AmmoDefinition[] source)
+        {
+            if (source == null)
+            {
+                return Array.Empty<AmmoDefinition>();
+            }
+
+            var clone = new AmmoDefinition[source.Length];
+            for (var i = 0; i < source.Length; i++)
+            {
+                var ammo = source[i];
+                clone[i] = ammo == null
+                    ? null
+                    : new AmmoDefinition(
+                        ammo.AmmoName,
+                        ammo.RequiredUserType,
+                        ammo.DamageMin,
+                        ammo.DamageMax,
+                        ammo.Radius,
+                        ammo.AttackRange,
+                        ammo.ReloadTime,
+                        ammo.Accuracy,
+                        ammo.DamageReliability);
+            }
+
+            return clone;
+        }
+
+        private static int[] CloneAmmunitionCounts(int[] source)
+        {
+            if (source == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            var clone = new int[source.Length];
+            Array.Copy(source, clone, source.Length);
+            return clone;
+        }
+
+        private float CalculateTeamThreat(UnitSpawnConfig[] units)
+        {
+            if (units == null || units.Length == 0)
+            {
+                return 0f;
+            }
+
+            var gameCatalog = GameDataCatalogLoader.Load();
+            var totalThreat = 0f;
+            for (var i = 0; i < units.Length; i++)
+            {
+                var unit = units[i];
+                if (unit?.definition == null)
+                {
+                    continue;
+                }
+
+                totalThreat += CalculateUnitThreat(unit, gameCatalog);
+            }
+
+            totalThreat += CalculateMapModifierThreatOverride();
+            return Mathf.Max(0f, totalThreat);
+        }
+
+        private float CalculateMapModifierThreatOverride()
+        {
+            var mapItem = activeMission == null ? null : FindMapItem(activeMission.mapItemId);
+            if (mapItem?.appliedMapModifiers == null)
+            {
+                return 0f;
+            }
+
+            var totalOverride = 0f;
+            for (var i = 0; i < mapItem.appliedMapModifiers.Count; i++)
+            {
+                var modifier = mapItem.appliedMapModifiers[i];
+                if (modifier != null && modifier.threatDeltaOverride > 0f)
+                {
+                    totalOverride += modifier.threatDeltaOverride;
+                }
+            }
+
+            return totalOverride;
+        }
+
+        private static float CalculateUnitThreat(UnitSpawnConfig unit, GameDataCatalog gameCatalog)
+        {
+            if (unit?.definition == null || gameCatalog == null || !gameCatalog.TryGetUnitTemplate(unit.definition.TemplateId, out var template) || template == null)
+            {
+                return 0f;
+            }
+
+            var count = Mathf.Max(1, unit.count);
+            var perUnitThreat = Mathf.Max(0f, template.ThreatValue);
+            var definition = unit.definition;
+
+            perUnitThreat += Mathf.Max(0f, RatioDelta(definition.MaxHealth, template.MaxHealth)) * 5f;
+            perUnitThreat += Mathf.Max(0f, definition.Armor - template.Armor) * 0.6f;
+            perUnitThreat += Mathf.Max(0f, RatioDelta(definition.Speed, template.Speed)) * 3f;
+            perUnitThreat += Mathf.Max(0f, RatioDelta(definition.Accuracy, template.Accuracy)) * 4f;
+            perUnitThreat += Mathf.Max(0f, RatioDelta(definition.FireReliability, template.FireReliability)) * 2f;
+            perUnitThreat += Mathf.Max(0f, RatioDelta(definition.MoveReliability, template.MoveReliability)) * 1.5f;
+
+            var baseLoadout = template.GetAmmunitionLoadout();
+            var currentAmmo = definition.Ammunition ?? Array.Empty<AmmoDefinition>();
+            var ammoCount = Mathf.Min(baseLoadout.Length, currentAmmo.Length);
+            for (var ammoIndex = 0; ammoIndex < ammoCount; ammoIndex++)
+            {
+                var baseAmmo = baseLoadout[ammoIndex].Definition;
+                var modifiedAmmo = currentAmmo[ammoIndex];
+                if (baseAmmo == null || modifiedAmmo == null)
+                {
+                    continue;
+                }
+
+                perUnitThreat += Mathf.Max(0f, RatioDelta(modifiedAmmo.Damage, baseAmmo.Damage)) * 6f;
+                perUnitThreat += Mathf.Max(0f, RatioDelta(baseAmmo.ReloadTime, modifiedAmmo.ReloadTime)) * 5f;
+                perUnitThreat += Mathf.Max(0f, RatioDelta(modifiedAmmo.AttackRange, baseAmmo.AttackRange)) * 2.5f;
+                perUnitThreat += Mathf.Max(0f, RatioDelta(modifiedAmmo.Radius, baseAmmo.Radius)) * 3f;
+            }
+
+            return perUnitThreat * count;
+        }
+
+        private static float RatioDelta(float currentValue, float baseValue)
+        {
+            if (baseValue <= 0.0001f)
+            {
+                return 0f;
+            }
+
+            return (currentValue / baseValue) - 1f;
+        }
+
+        private static PreparedMissionRewardProfile BuildRewardProfile(float baseThreat, float modifiedThreat)
+        {
+            var rewardProfile = new PreparedMissionRewardProfile
+            {
+                baseThreat = Mathf.Max(0f, baseThreat),
+                modifiedThreat = Mathf.Max(0f, modifiedThreat),
+                threatRatio = baseThreat > 0.01f ? modifiedThreat / baseThreat : 1f
+            };
+
+            var effectiveRatio = Mathf.Max(1f, rewardProfile.threatRatio);
+            if (effectiveRatio <= 1.1f)
+            {
+                rewardProfile.rewardMultiplier = effectiveRatio > 1f ? 1.05f : 1f;
+                rewardProfile.bonusLootRollChance = effectiveRatio > 1f ? 0.1f : 0f;
+                return rewardProfile;
+            }
+
+            if (effectiveRatio <= 1.25f)
+            {
+                rewardProfile.rewardMultiplier = 1.15f;
+                rewardProfile.bonusLootRollChance = 0.2f;
+                return rewardProfile;
+            }
+
+            if (effectiveRatio <= 1.5f)
+            {
+                rewardProfile.rewardMultiplier = 1.3f;
+                rewardProfile.bonusLootRollChance = 0.35f;
+                return rewardProfile;
+            }
+
+            if (effectiveRatio <= 2f)
+            {
+                rewardProfile.rewardMultiplier = 1.6f;
+                rewardProfile.bonusLootRollChance = 0.5f;
+                return rewardProfile;
+            }
+
+            rewardProfile.rewardMultiplier = 2f;
+            rewardProfile.bonusLootRollChance = 0.75f;
+            return rewardProfile;
+        }
+
+        private static string[] BuildMapModifierDebugLabels(List<AppliedMapModifierData> modifiers)
+        {
+            if (modifiers == null || modifiers.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var labels = new List<string>(modifiers.Count);
+            for (var i = 0; i < modifiers.Count; i++)
+            {
+                var modifier = modifiers[i];
+                if (modifier == null)
+                {
+                    continue;
+                }
+
+                labels.Add(string.IsNullOrWhiteSpace(modifier.displayName) ? modifier.mapModifierTemplateId : modifier.displayName);
+            }
+
+            return labels.ToArray();
+        }
+
+        private List<AppliedMapModifierData> CreateAppliedMapModifiers(StartingMapEntry entry)
+        {
+            var modifiers = new List<AppliedMapModifierData>();
+            if (entry?.appliedMapModifierTemplateIds == null || entry.appliedMapModifierTemplateIds.Count == 0 || catalogs == null)
+            {
+                return modifiers;
+            }
+
+            for (var i = 0; i < entry.appliedMapModifierTemplateIds.Count; i++)
+            {
+                var templateId = entry.appliedMapModifierTemplateIds[i];
+                if (string.IsNullOrWhiteSpace(templateId))
+                {
+                    continue;
+                }
+
+                if (!catalogs.TryGetMapModifierTemplate(templateId, out var template) || template == null)
+                {
+                    Debug.LogWarning("Unknown map modifier template in starting loadout: " + templateId);
+                    continue;
+                }
+
+                modifiers.Add(InstantiateMapModifier(template));
+            }
+
+            return modifiers;
+        }
+
+        private static AppliedMapModifierData InstantiateMapModifier(MapModifierTemplateDefinition template)
+        {
+            var applied = new AppliedMapModifierData
+            {
+                mapModifierTemplateId = template.mapModifierTemplateId,
+                displayName = template.displayName,
+                description = template.description,
+                targetScope = template.targetScope,
+                selectors = template.selectors == null
+                    ? new MapModifierSelectorDefinition()
+                    : new MapModifierSelectorDefinition
+                    {
+                        all = template.selectors.all,
+                        unitType = template.selectors.unitType
+                    },
+                threatDeltaOverride = template.threatDeltaOverride
+            };
+
+            if (template.effects == null)
+            {
+                return applied;
+            }
+
+            for (var i = 0; i < template.effects.Count; i++)
+            {
+                var effect = template.effects[i];
+                if (effect == null)
+                {
+                    continue;
+                }
+
+                applied.effects.Add(new AppliedMapModifierEffectData
+                {
+                    effectType = effect.effectType,
+                    statKey = effect.statKey,
+                    operation = effect.operation,
+                    rolledValue = RollInclusive(effect.minValue, effect.maxValue),
+                    ammoType = effect.ammoType,
+                    replacementUnitType = effect.replacementUnitType,
+                    maxAffectedEntries = effect.maxAffectedEntries
+                });
+            }
+
+            return applied;
         }
 
         private List<UnitSpawnConfig> BuildMissionBlueUnitCards(List<string> selectedUnitCardIds)
@@ -944,6 +1776,21 @@ namespace AutoBattler
                 });
             }
 
+            for (var i = 0; i < startingLoadout.startingCurrencyItems.Count; i++)
+            {
+                var entry = startingLoadout.startingCurrencyItems[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.currencyItemDefinitionId))
+                {
+                    continue;
+                }
+
+                created.currencyItemStacks.Add(new CurrencyItemStack
+                {
+                    currencyItemDefinitionId = entry.currencyItemDefinitionId,
+                    amount = Mathf.Max(1, entry.amount)
+                });
+            }
+
             var mapItemSequence = 1;
             for (var i = 0; i < startingLoadout.startingMaps.Count; i++)
             {
@@ -960,7 +1807,8 @@ namespace AutoBattler
                     {
                         mapItemId = "map_item_" + mapItemSequence.ToString("D3"),
                         mapDefinitionId = entry.mapDefinitionId,
-                        instanceName = prefix + " " + ToRomanNumeral(count + 1)
+                        instanceName = prefix + " " + ToRomanNumeral(count + 1),
+                        appliedMapModifiers = CreateAppliedMapModifiers(entry)
                     });
                     mapItemSequence++;
                 }
@@ -1025,6 +1873,46 @@ namespace AutoBattler
             return string.IsNullOrWhiteSpace(definition.displayName) ? definition.unitCardDefinitionId : definition.displayName;
         }
 
+        private string GenerateUniqueOwnedUnitCardName(string requestedName, UnitCardDefinition definition)
+        {
+            var baseName = requestedName;
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = definition != null && !string.IsNullOrWhiteSpace(definition.displayName)
+                    ? definition.displayName
+                    : definition != null ? definition.unitCardDefinitionId : "Unit";
+            }
+
+            var candidate = baseName;
+            var suffix = 2;
+            while (HasOwnedUnitCardName(candidate))
+            {
+                candidate = baseName + "-" + suffix;
+                suffix++;
+            }
+
+            return candidate;
+        }
+
+        private bool HasOwnedUnitCardName(string displayName)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < saveData.ownedUnitCards.Count; i++)
+            {
+                var card = saveData.ownedUnitCards[i];
+                if (card != null && string.Equals(card.displayName, displayName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private void ApplyClaimedLoot(List<DroppedLootEntry> claimedLoot)
         {
             if (claimedLoot == null || claimedLoot.Count == 0)
@@ -1061,6 +1949,43 @@ namespace AutoBattler
             }
         }
 
+        private void ApplyAwardedUnitCards(List<AwardedUnitCardData> awardedUnitCards)
+        {
+            if (awardedUnitCards == null || awardedUnitCards.Count == 0)
+            {
+                return;
+            }
+
+            for (var i = 0; i < awardedUnitCards.Count; i++)
+            {
+                AddAwardedUnitCard(awardedUnitCards[i]);
+            }
+        }
+
+        private void AddAwardedUnitCard(AwardedUnitCardData awardedCard)
+        {
+            if (awardedCard == null || string.IsNullOrWhiteSpace(awardedCard.baseTemplateId))
+            {
+                return;
+            }
+
+            if (!catalogs.TryGetUnitCardDefinition(awardedCard.baseTemplateId, out var definition) || definition == null)
+            {
+                Debug.LogWarning("Unable to award unit card for unknown template: " + awardedCard.baseTemplateId);
+                return;
+            }
+
+            saveData.ownedUnitCards.Add(new OwnedUnitCard
+            {
+                unitCardId = "unit_card_" + Guid.NewGuid().ToString("N"),
+                definitionId = definition.unitCardDefinitionId,
+                displayName = GenerateUniqueOwnedUnitCardName(awardedCard.displayName, definition),
+                baseTemplateId = definition.baseTemplateId,
+                overrideJson = awardedCard.overrideJson ?? string.Empty,
+                status = UnitCardStatus.Available
+            });
+        }
+
         private void AddOwnedMapItem(DroppedLootEntry entry)
         {
             if (entry == null || string.IsNullOrWhiteSpace(entry.mapDefinitionId))
@@ -1080,7 +2005,8 @@ namespace AutoBattler
                 {
                     mapItemId = "map_item_" + Guid.NewGuid().ToString("N"),
                     mapDefinitionId = entry.mapDefinitionId,
-                    instanceName = instanceName
+                    instanceName = instanceName,
+                    appliedMapModifiers = new List<AppliedMapModifierData>()
                 });
             }
         }
@@ -1403,7 +2329,7 @@ namespace AutoBattler
             {
                 var template = pair.Value;
                 if (template == null
-                    || !string.Equals(template.itemType, itemDefinition.itemType, StringComparison.OrdinalIgnoreCase)
+                    || !ModifierTemplateMatchesItemType(template, itemDefinition.itemType)
                     || template.tier != itemDefinition.tier
                     || HasModifier(ownedItem, template.modifierTemplateId))
                 {
@@ -1416,7 +2342,104 @@ namespace AutoBattler
             return results;
         }
 
+        private List<MapModifierTemplateDefinition> BuildMapModifierTemplatePool(OwnedMapItem mapItem, MapDefinition mapDefinition)
+        {
+            var results = new List<MapModifierTemplateDefinition>();
+            if (mapDefinition == null || catalogs?.MapModifierTemplates == null)
+            {
+                return results;
+            }
+
+            foreach (var pair in catalogs.MapModifierTemplates)
+            {
+                var template = pair.Value;
+                if (template == null
+                    || template.tier != mapDefinition.tier
+                    || HasMapModifier(mapItem, template.mapModifierTemplateId))
+                {
+                    continue;
+                }
+
+                results.Add(template);
+            }
+
+            return results;
+        }
+
+        private static bool ModifierTemplateMatchesItemType(ModifierTemplateDefinition template, string itemType)
+        {
+            if (template == null || string.IsNullOrWhiteSpace(itemType))
+            {
+                return false;
+            }
+
+            if (template.itemTypes == null || template.itemTypes.Count == 0)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < template.itemTypes.Count; i++)
+            {
+                if (string.Equals(template.itemTypes[i], itemType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ContainsIgnoreCase(List<string> values, string candidate)
+        {
+            if (values == null || string.IsNullOrWhiteSpace(candidate))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < values.Count; i++)
+            {
+                if (string.Equals(values[i], candidate, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static ModifierTemplateDefinition SelectWeightedModifierTemplate(List<ModifierTemplateDefinition> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return null;
+            }
+
+            var totalWeight = 0;
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                totalWeight += Mathf.Max(1, candidates[i].weight);
+            }
+
+            if (totalWeight <= 0)
+            {
+                return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+            }
+
+            var roll = UnityEngine.Random.Range(0, totalWeight);
+            var runningWeight = 0;
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                runningWeight += Mathf.Max(1, candidates[i].weight);
+                if (roll < runningWeight)
+                {
+                    return candidates[i];
+                }
+            }
+
+            return candidates[candidates.Count - 1];
+        }
+
+        private static MapModifierTemplateDefinition SelectWeightedMapModifierTemplate(List<MapModifierTemplateDefinition> candidates)
         {
             if (candidates == null || candidates.Count == 0)
             {
@@ -1460,6 +2483,26 @@ namespace AutoBattler
                 var appliedModifier = ownedItem.appliedModifiers[i];
                 if (appliedModifier != null
                     && string.Equals(appliedModifier.modifierTemplateId, modifierTemplateId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasMapModifier(OwnedMapItem mapItem, string modifierTemplateId)
+        {
+            if (mapItem?.appliedMapModifiers == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < mapItem.appliedMapModifiers.Count; i++)
+            {
+                var appliedModifier = mapItem.appliedMapModifiers[i];
+                if (appliedModifier != null
+                    && string.Equals(appliedModifier.mapModifierTemplateId, modifierTemplateId, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
@@ -1687,6 +2730,38 @@ namespace AutoBattler
             }
 
             return false;
+        }
+
+        private int GetFieldingGoldCost(OwnedUnitCard card)
+        {
+            if (card == null || string.IsNullOrWhiteSpace(card.baseTemplateId))
+            {
+                return 0;
+            }
+
+            var gameCatalog = GameDataCatalogLoader.Load();
+            if (!gameCatalog.TryGetUnitTemplate(card.baseTemplateId, out var template) || template == null)
+            {
+                return 0;
+            }
+
+            return template.UnitType switch
+            {
+                UnitType.Tank => 50,
+                UnitType.Infantry => 25,
+                _ => 25
+            };
+        }
+
+        private void RefundDeploymentGold(OwnedUnitCard card)
+        {
+            if (card == null || card.deploymentGoldCostPaid <= 0)
+            {
+                return;
+            }
+
+            saveData.gold += card.deploymentGoldCostPaid;
+            card.deploymentGoldCostPaid = 0;
         }
 
         private void RemoveEquippedItemsForCard(string unitCardId)

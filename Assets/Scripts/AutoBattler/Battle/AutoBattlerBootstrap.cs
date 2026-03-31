@@ -208,7 +208,18 @@ namespace AutoBattler
                     var area = startAreas[areaIndex];
                     var areaLocalIndex = areaSpawnCounts[areaIndex]++;
                     var worldPosition = area.GetSpawnPosition(areaLocalIndex, areaUnitTotals[areaIndex], formation);
-                    SpawnUnit(parent, definition, team, mission, worldPosition, targetPoint, unitConfig.ownedUnitCardId, unitConfig.lootTableId);
+                    SpawnUnit(
+                        parent,
+                        definition,
+                        team,
+                        mission,
+                        worldPosition,
+                        targetPoint,
+                        unitConfig.ownedUnitCardId,
+                        unitConfig.lootTableId,
+                        unitConfig.returnToHeadquartersIfSurvives,
+                        unitConfig.captureAsUnitCardOnDeath,
+                        unitConfig.persistentOverrideJson);
                     spawnedCount++;
                 }
             }
@@ -385,7 +396,10 @@ namespace AutoBattler
             Vector3 position,
             Vector3 targetPoint,
             string ownedUnitCardId = null,
-            string lootTableId = null)
+            string lootTableId = null,
+            bool returnToHeadquartersIfSurvives = false,
+            bool captureAsUnitCardOnDeath = false,
+            string persistentOverrideJson = null)
         {
             var unitObject = UnitFactory.CreateUnitObject(definition, team, parent, position);
             unitObject.name = team + " " + definition.UnitName + " " + mission;
@@ -396,6 +410,8 @@ namespace AutoBattler
             {
                 unit.LinkOwnedUnitCard(ownedUnitCardId);
             }
+
+            unit.ConfigureCampaignTransfer(returnToHeadquartersIfSurvives, captureAsUnitCardOnDeath, persistentOverrideJson);
         }
 
         private void ValidateSceneLayout(SceneLayout layout, SceneBattleConfig config)

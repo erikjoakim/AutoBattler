@@ -8,7 +8,8 @@ namespace AutoBattler
     {
         [SerializeField] private string ammoName;
         [SerializeField] private UnitType requiredUserType;
-        [SerializeField] private int damage = 1;
+        [SerializeField] private int damageMin = 1;
+        [SerializeField] private int damageMax = 1;
         [SerializeField] private float radius;
         [SerializeField] private float attackRange = 3f;
         [SerializeField] private float reloadTime = 1f;
@@ -18,7 +19,8 @@ namespace AutoBattler
         public AmmoDefinition(
             string ammoName,
             UnitType requiredUserType,
-            int damage,
+            int damageMin,
+            int damageMax,
             float radius,
             float attackRange,
             float reloadTime,
@@ -27,7 +29,8 @@ namespace AutoBattler
         {
             this.ammoName = ammoName;
             this.requiredUserType = requiredUserType;
-            this.damage = damage;
+            this.damageMin = Mathf.Max(0, damageMin);
+            this.damageMax = Mathf.Max(this.damageMin, damageMax);
             this.radius = radius;
             this.attackRange = attackRange;
             this.reloadTime = reloadTime;
@@ -37,7 +40,9 @@ namespace AutoBattler
 
         public string AmmoName => ammoName;
         public UnitType RequiredUserType => requiredUserType;
-        public int Damage => damage;
+        public int DamageMin => damageMin;
+        public int DamageMax => damageMax;
+        public int Damage => Mathf.RoundToInt((damageMin + damageMax) * 0.5f);
         public float Radius => radius;
         public float AttackRange => attackRange;
         public float ReloadTime => reloadTime;

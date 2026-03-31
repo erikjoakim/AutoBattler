@@ -188,7 +188,7 @@ namespace AutoBattler
                     displayName = JsonDataHelper.GetString(item, "displayName", modifierTemplateId),
                     description = JsonDataHelper.GetString(item, "description", string.Empty),
                     modifierType = JsonDataHelper.GetEnum(item, "modifierType", ModifierType.MaxHealth),
-                    itemType = JsonDataHelper.GetString(item, "itemType", string.Empty),
+                    itemTypes = ParseModifierItemTypes(item),
                     tier = Mathf.Max(1, JsonDataHelper.GetInt(item, "tier", 1)),
                     weight = Mathf.Max(1, JsonDataHelper.GetInt(item, "weight", 1)),
                     rollAMin = JsonDataHelper.GetInt(item, "rollAMin", 0),
@@ -199,6 +199,30 @@ namespace AutoBattler
             }
 
             return definitions.Count > 0 ? definitions : CreateDefaultModifierTemplates();
+        }
+
+        private static List<string> ParseModifierItemTypes(Dictionary<string, object> item)
+        {
+            var results = new List<string>();
+            var values = JsonDataHelper.GetArray(item, "itemTypes");
+            for (var i = 0; i < values.Count; i++)
+            {
+                if (values[i] is string stringValue && !string.IsNullOrWhiteSpace(stringValue))
+                {
+                    results.Add(stringValue);
+                }
+            }
+
+            if (results.Count == 0)
+            {
+                var singleItemType = JsonDataHelper.GetString(item, "itemType", string.Empty);
+                if (!string.IsNullOrWhiteSpace(singleItemType))
+                {
+                    results.Add(singleItemType);
+                }
+            }
+
+            return results;
         }
 
         private static Dictionary<string, CurrencyItemDefinition> LoadCurrencyItemDefinitions()
@@ -233,6 +257,7 @@ namespace AutoBattler
                     description = JsonDataHelper.GetString(item, "description", string.Empty),
                     iconId = JsonDataHelper.GetString(item, "iconId", string.Empty),
                     actionType = JsonDataHelper.GetEnum(item, "actionType", CurrencyActionType.None),
+                    targetTypes = ParseStringList(item, "targetTypes"),
                     minExistingModifiers = Mathf.Max(0, JsonDataHelper.GetInt(item, "minExistingModifiers", 0)),
                     maxExistingModifiers = Mathf.Max(0, JsonDataHelper.GetInt(item, "maxExistingModifiers", 0)),
                     minAddedModifiers = Mathf.Max(1, JsonDataHelper.GetInt(item, "minAddedModifiers", 1)),
@@ -334,13 +359,42 @@ namespace AutoBattler
                     displayName = "Scrap Parts",
                     description = "General-purpose battlefield salvage.",
                     actionType = CurrencyActionType.AddModifiers,
+                    targetTypes = new List<string> { "Utility", "Weapon" },
                     minExistingModifiers = 0,
                     maxExistingModifiers = 0,
                     minAddedModifiers = 1,
                     maxAddedModifiers = 2,
                     maxModifiersPerItem = 2
+                },
+                ["map_survey_orb"] = new CurrencyItemDefinition
+                {
+                    currencyItemDefinitionId = "map_survey_orb",
+                    displayName = "Survey Orb",
+                    description = "A cartographic orb used to alter hostile map conditions.",
+                    actionType = CurrencyActionType.AddModifiers,
+                    targetTypes = new List<string> { "Map" },
+                    minExistingModifiers = 0,
+                    maxExistingModifiers = 0,
+                    minAddedModifiers = 1,
+                    maxAddedModifiers = 1,
+                    maxModifiersPerItem = 2
                 }
             };
+        }
+
+        private static List<string> ParseStringList(Dictionary<string, object> source, string key)
+        {
+            var results = new List<string>();
+            var values = JsonDataHelper.GetArray(source, key);
+            for (var i = 0; i < values.Count; i++)
+            {
+                if (values[i] is string stringValue && !string.IsNullOrWhiteSpace(stringValue))
+                {
+                    results.Add(stringValue);
+                }
+            }
+
+            return results;
         }
 
         private static Dictionary<string, ModifierTemplateDefinition> CreateDefaultModifierTemplates()
@@ -353,7 +407,7 @@ namespace AutoBattler
                     displayName = "Reinforced Lining",
                     description = "Adds layered interior protection.",
                     modifierType = ModifierType.MaxHealth,
-                    itemType = "Utility",
+                    itemTypes = new List<string> { "Utility" },
                     tier = 1,
                     weight = 10,
                     rollAMin = 1,
@@ -365,7 +419,7 @@ namespace AutoBattler
                     displayName = "Plated Bracing",
                     description = "Adds extra armor support.",
                     modifierType = ModifierType.Armor,
-                    itemType = "Utility",
+                    itemTypes = new List<string> { "Utility" },
                     tier = 1,
                     weight = 8,
                     rollAMin = 1,
@@ -377,7 +431,7 @@ namespace AutoBattler
                     displayName = "Reactive Charge Matrix",
                     description = "Adds a fluctuating damage band.",
                     modifierType = ModifierType.Damage,
-                    itemType = "Utility",
+                    itemTypes = new List<string> { "Utility" },
                     tier = 1,
                     weight = 4,
                     rollAMin = 1,
@@ -391,7 +445,7 @@ namespace AutoBattler
                     displayName = "Legacy Armor Reinforcement",
                     description = "Converted from a previous item upgrade.",
                     modifierType = ModifierType.Armor,
-                    itemType = "Utility",
+                    itemTypes = new List<string> { "Utility" },
                     tier = 1,
                     weight = 1,
                     rollAMin = 1,

@@ -135,6 +135,9 @@ namespace AutoBattler
         public UnitDefinition definition;
         public string ownedUnitCardId;
         public string lootTableId;
+        public bool returnToHeadquartersIfSurvives;
+        public bool captureAsUnitCardOnDeath;
+        public string persistentOverrideJson;
 
         public static UnitSpawnConfig FromTemplate(GameDataCatalog catalog, string templateId, string unitName, int count = 1)
         {
@@ -164,11 +167,12 @@ namespace AutoBattler
                 ammunitionCounts[i] = loadout[i].AmmunitionCount;
                 var ammoDefinition = loadout[i].Definition;
                 ammunition[i] = ammoDefinition == null
-                    ? new AmmoDefinition(loadout[i].AmmoType, template.UnitType, 0, 0f, 0.1f, 1f, 1f, 1f)
+                    ? new AmmoDefinition(loadout[i].AmmoType, template.UnitType, 0, 0, 0f, 0.1f, 1f, 1f, 1f)
                     : new AmmoDefinition(
                         ammoDefinition.AmmoName,
                         ammoDefinition.RequiredUserType,
-                        ammoDefinition.Damage,
+                        ammoDefinition.DamageMin,
+                        ammoDefinition.DamageMax,
                         ammoDefinition.Radius,
                         ammoDefinition.AttackRange,
                         ammoDefinition.ReloadTime,

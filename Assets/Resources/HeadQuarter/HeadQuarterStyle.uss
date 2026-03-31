@@ -20,7 +20,7 @@
 .top-bar-label {
     font-size: 24px;
     letter-spacing: 1px;
-    unity-font-style: bold;
+    -unity-font-style: bold;
     color: rgb(239, 242, 234);
 }
 
@@ -59,7 +59,7 @@
 
 .panel-title {
     font-size: 21px;
-    unity-font-style: bold;
+    -unity-font-style: bold;
     margin-bottom: 12px;
     color: rgb(240, 242, 236);
 }
@@ -86,7 +86,7 @@
 
 .sub-panel-title {
     font-size: 17px;
-    unity-font-style: bold;
+    -unity-font-style: bold;
     margin-bottom: 8px;
 }
 
@@ -97,6 +97,10 @@
 }
 
 .list-container {
+    flex-grow: 1;
+}
+
+.scroll-list-container {
     flex-grow: 1;
 }
 
@@ -113,7 +117,6 @@
 .details-label {
     white-space: normal;
     font-size: 15px;
-    line-height: 20px;
     min-height: 160px;
     color: rgb(223, 230, 221);
 }
@@ -126,7 +129,6 @@
 .unit-card-details-label {
     min-height: 110px;
     font-size: 14px;
-    line-height: 18px;
 }
 
 .button-row {
@@ -141,7 +143,7 @@
     border-radius: 8px;
     margin-right: 8px;
     font-size: 15px;
-    unity-font-style: bold;
+    -unity-font-style: bold;
 }
 
 .action-button-last {
@@ -201,6 +203,7 @@
 #SelectedCardsPanel {
     flex-grow: 0;
     min-height: 220px;
+    max-height: 100%;
 }
 
 .hex-slot {
@@ -222,7 +225,6 @@
     border-left-color: rgba(9, 16, 18, 0.75);
     align-items: center;
     justify-content: center;
-    box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.28);
 }
 
 .hex-title {
@@ -230,14 +232,14 @@
     top: 10px;
     left: 10px;
     right: 10px;
-    unity-text-align: middle-center;
+    -unity-text-align: middle-center;
     font-size: 13px;
     color: rgb(196, 208, 208);
 }
 
 .hex-state {
     font-size: 16px;
-    unity-text-align: middle-center;
+    -unity-text-align: middle-center;
     white-space: normal;
     color: rgb(246, 247, 243);
     padding-left: 10px;
@@ -310,6 +312,17 @@
     background-color: rgba(77, 72, 35, 0.92);
 }
 
+.inventory-card-currency-selected {
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+    border-top-color: rgb(241, 228, 182);
+    border-right-color: rgb(241, 228, 182);
+    border-bottom-color: rgb(241, 228, 182);
+    border-left-color: rgb(241, 228, 182);
+}
+
 .inventory-card-item {
     background-color: rgba(50, 69, 51, 0.92);
 }
@@ -317,7 +330,7 @@
 .inventory-card-title,
 #UnitName {
     font-size: 16px;
-    unity-font-style: bold;
+    -unity-font-style: bold;
     color: rgb(246, 247, 242);
 }
 
@@ -382,7 +395,7 @@
 
 .equipped-item-chip-title {
     font-size: 12px;
-    unity-font-style: bold;
+    -unity-font-style: bold;
     color: rgb(246, 247, 242);
     white-space: normal;
 }
@@ -405,6 +418,29 @@
 .equipped-item-empty {
     font-size: 12px;
     color: rgb(184, 193, 188);
+}
+
+.unit-card-section-label {
+    margin-top: 6px;
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: rgb(244, 236, 205);
+}
+
+.unit-card-detail-line,
+.unit-card-detail-line-compact {
+    margin-top: 3px;
+    white-space: normal;
+    color: rgb(226, 230, 220);
+}
+
+.unit-card-detail-line {
+    font-size: 12px;
+}
+
+.unit-card-detail-line-compact {
+    font-size: 11px;
+    color: rgb(206, 214, 203);
 }
 
 .small-action-button {
@@ -445,8 +481,50 @@
     padding-right: 12px;
     font-size: 14px;
     color: rgb(249, 248, 242);
-    pointer-events: none;
     display: none;
+}
+
+.detail-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(7, 10, 12, 0.46);
+    justify-content: center;
+    align-items: center;
+    display: none;
+}
+
+.detail-card {
+    width: 720px;
+    max-width: 78%;
+    max-height: 82%;
+    background-color: rgba(27, 38, 43, 0.98);
+    border-radius: 14px;
+    padding-top: 18px;
+    padding-bottom: 18px;
+    padding-left: 18px;
+    padding-right: 18px;
+}
+
+.detail-card-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.detail-card-title {
+    flex-grow: 1;
+    font-size: 21px;
+    -unity-font-style: bold;
+    color: rgb(244, 246, 240);
+}
+
+.detail-card-content {
+    flex-grow: 1;
+    min-height: 420px;
 }
 
 .result-overlay {
@@ -478,7 +556,7 @@
     flex-grow: 1;
     width: 100%;
     white-space: normal;
-    unity-text-align: upper-left;
+    -unity-text-align: upper-left;
     font-size: 18px;
     color: rgb(240, 242, 236);
 }

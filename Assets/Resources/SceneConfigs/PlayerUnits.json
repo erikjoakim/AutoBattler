@@ -33,7 +33,8 @@
     {
       "unitName": "Blue Line Infantry",
       "unitType": "Guard Infantry",
-      "count": 1
+      "count": 1,
+      "returnToHeadquartersIfSurvives": true
     },
     {
       "unitName": "Blue Raiders",

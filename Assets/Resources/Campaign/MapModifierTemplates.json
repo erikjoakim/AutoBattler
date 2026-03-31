@@ -1,0 +1,90 @@
+{
+  "modifiers": [
+    {
+      "mapModifierTemplateId": "enemy_all_health_t1",
+      "displayName": "Reinforced Enemy Forces",
+      "description": "All enemy units gain extra health.",
+      "tier": 1,
+      "weight": 10,
+      "targetScope": "RedTeam",
+      "selectors": {
+        "all": true
+      },
+      "effects": [
+        {
+          "effectType": "ModifyUnitStat",
+          "statKey": "maxHealth",
+          "operation": "Add",
+          "minValue": 2,
+          "maxValue": 4
+        }
+      ]
+    },
+    {
+      "mapModifierTemplateId": "enemy_tank_shell_boost_t1",
+      "displayName": "Heavy Shell Stockpile",
+      "description": "Enemy tank shells hit harder.",
+      "tier": 1,
+      "weight": 5,
+      "targetScope": "RedTeam",
+      "selectors": {
+        "unitType": "Assault Tank"
+      },
+      "effects": [
+        {
+          "effectType": "ModifyAmmoStat",
+          "ammoType": "Tank Shell",
+          "statKey": "damageMin",
+          "operation": "Add",
+          "minValue": 1,
+          "maxValue": 2
+        },
+        {
+          "effectType": "ModifyAmmoStat",
+          "ammoType": "Tank Shell",
+          "statKey": "damageMax",
+          "operation": "Add",
+          "minValue": 2,
+          "maxValue": 4
+        }
+      ]
+    },
+    {
+      "mapModifierTemplateId": "enemy_extra_raiders_t1",
+      "displayName": "Additional Raiders",
+      "description": "Enemy raider squads arrive in larger numbers.",
+      "tier": 1,
+      "weight": 6,
+      "targetScope": "RedTeam",
+      "selectors": {
+        "unitType": "Raider Infantry"
+      },
+      "effects": [
+        {
+          "effectType": "AdjustUnitCount",
+          "operation": "Add",
+          "minValue": 1,
+          "maxValue": 2
+        }
+      ]
+    },
+    {
+      "mapModifierTemplateId": "enemy_guard_to_raider_t1",
+      "displayName": "Raider Deployment",
+      "description": "Some enemy guard infantry are replaced by raiders.",
+      "tier": 1,
+      "weight": 6,
+      "targetScope": "RedTeam",
+      "selectors": {
+        "unitType": "Guard Infantry"
+      },
+      "effects": [
+        {
+          "effectType": "ReplaceUnitType",
+          "replacementUnitType": "Raider Infantry",
+          "maxAffectedEntries": 2
+        }
+      ]
+    }
+  ]
+}

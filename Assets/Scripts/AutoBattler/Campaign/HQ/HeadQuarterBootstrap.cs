@@ -30,11 +30,16 @@ namespace AutoBattler
         private Label statusLabel;
         private Button openMapButton;
         private Button clearHexButton;
+        private VisualElement unitDetailOverlay;
+        private Label unitDetailTitle;
+        private VisualElement unitDetailContent;
         private VisualElement resultOverlay;
         private Label resultLabel;
         private string selectedHexSlotId;
         private string draggedMapItemId;
         private string draggedItemInstanceId;
+        private string activeCurrencyItemDefinitionId;
+        private string activeCurrencyDisplayName;
         private VisualElement draggedMapGhost;
         private LootCatalogs lootCatalogs;
 
@@ -93,6 +98,7 @@ namespace AutoBattler
                 root.styleSheets.Add(style);
             }
 
+            root.RegisterCallback<PointerDownEvent>(OnRootPointerDown);
             root.RegisterCallback<PointerMoveEvent>(OnRootPointerMove);
             root.RegisterCallback<PointerUpEvent>(OnRootPointerUp);
         }
@@ -152,13 +158,18 @@ namespace AutoBattler
             statusLabel = RequireLabel("StatusLabel");
             openMapButton = RequireButton("OpenMapButton");
             clearHexButton = RequireButton("ClearHexButton");
+            unitDetailOverlay = Require("UnitDetailOverlay");
+            unitDetailTitle = RequireLabel("UnitDetailTitle");
+            unitDetailContent = Require("UnitDetailContent");
             resultOverlay = Require("ResultOverlay");
             resultLabel = RequireLabel("ResultLabel");
 
             openMapButton.clicked += TryOpenSelectedHex;
             clearHexButton.clicked += TryClearSelectedHex;
+            RequireButton("UnitDetailCloseButton").clicked += CloseUnitDetailPopup;
             RequireButton("ResultConfirmButton").clicked += ConfirmResult;
             inventoryList.RegisterCallback<PointerUpEvent>(OnInventoryPointerUp);
+            unitDetailOverlay.RegisterCallback<PointerDownEvent>(OnUnitDetailOverlayPointerDown);
         }
 
         private void BuildHexBoard()
@@ -200,6 +211,7 @@ namespace AutoBattler
                 return;
             }
 
+            CloseUnitDetailPopup();
             PopulateMapInventory();
             PopulateCards();
             RefreshBoard();
@@ -220,10 +232,10 @@ namespace AutoBattler
                 var mapItem = maps[i];
                 CampaignRuntimeContext.Instance.Catalogs.TryGetMapDefinition(mapItem.mapDefinitionId, out var definition);
                 var card = BuildInventoryCard(
-                    definition?.displayName ?? mapItem.instanceName,
-                    "Map  T" + (definition?.tier ?? 1),
+                    mapItem.instanceName,
+                    BuildMapSubtitle(mapItem, definition),
                     "inventory-card-map");
-                RegisterMapDrag(card, mapItem.mapItemId, definition?.displayName ?? mapItem.instanceName);
+                RegisterMapDrag(card, mapItem.mapItemId, mapItem.instanceName);
                 inventoryList.Add(card);
             }
 
@@ -241,7 +253,14 @@ namespace AutoBattler
                     displayName = definition.displayName;
                 }
 
-                inventoryList.Add(BuildInventoryCard(displayName, "Currency  x" + stack.amount, "inventory-card-currency"));
+                var currencyCard = BuildInventoryCard(displayName, "Currency  x" + stack.amount, "inventory-card-currency");
+                if (string.Equals(activeCurrencyItemDefinitionId, stack.currencyItemDefinitionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    currencyCard.AddToClassList("inventory-card-currency-selected");
+                }
+
+                RegisterCurrencySelection(currencyCard, stack.currencyItemDefinitionId, displayName);
+                inventoryList.Add(currencyCard);
             }
 
             for (var i = 0; i < ownedItems.Count; i++)
@@ -292,15 +311,7 @@ namespace AutoBattler
 
         private VisualElement BuildOwnedInventoryItemCard(OwnedUnitItem item, string titleText, string subtitleText)
         {
-            var card = BuildInventoryCard(titleText, subtitleText, "inventory-card-item");
-            var modifyButton = new Button(() => TryModifyItem(item.itemInstanceId))
-            {
-                text = "Mod"
-            };
-            modifyButton.AddToClassList("inventory-item-button");
-            modifyButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
-            card.Add(modifyButton);
-            return card;
+            return BuildInventoryCard(titleText, subtitleText, "inventory-card-item");
         }
 
         private void PopulateCards()
@@ -381,6 +392,7 @@ namespace AutoBattler
                 text = assigned ? "Remove" : "Select"
             };
             action.AddToClassList("small-action-button");
+            action.RegisterCallback<ClickEvent>(evt => evt.StopPropagation());
             headerRow.Add(action);
             rootElement.Add(headerRow);
 
@@ -402,8 +414,124 @@ namespace AutoBattler
             }
 
             rootElement.Add(itemsRow);
+            if (assigned)
+            {
+                rootElement.RegisterCallback<ClickEvent>(_ => OpenUnitDetailPopup(card));
+            }
+
             rootElement.RegisterCallback<PointerUpEvent>(_ => TryDropDraggedItemToUnitCard(card.unitCardId));
             return rootElement;
+        }
+
+        private VisualElement BuildAssignedUnitDetails(OwnedUnitCard card)
+        {
+            var details = new VisualElement();
+            details.AddToClassList("unit-card-details");
+
+            if (CampaignRuntimeContext.Instance == null
+                || !CampaignRuntimeContext.Instance.TryBuildResolvedUnitSpawnForCard(card.unitCardId, out var unitSpawn)
+                || unitSpawn?.definition == null)
+            {
+                details.Add(BuildDetailLine("Preview unavailable."));
+                return details;
+            }
+
+            var definition = unitSpawn.definition;
+            details.Add(BuildDetailSectionLabel("Core"));
+            details.Add(BuildDetailLine("Mission: " + unitSpawn.mission + "  Type: " + definition.UnitType + "  Nav: " + BuildNavigationLabel(definition)));
+            details.Add(BuildDetailLine("Health: " + definition.MaxHealth + "  Armor: " + definition.Armor + "  Vision: " + definition.VisionRange.ToString("0.##")));
+            details.Add(BuildDetailLine("Speed: " + definition.Speed.ToString("0.##")
+                + "  Accuracy: " + definition.Accuracy.ToString("0.##")
+                + "  Fire Rel: " + definition.FireReliability.ToString("0.##")
+                + "  Move Rel: " + definition.MoveReliability.ToString("0.##")));
+
+            if (definition.OutgoingDamageBonusMin > 0 || definition.OutgoingDamageBonusMax > 0)
+            {
+                details.Add(BuildDetailLine("Damage Bonus: +" + definition.OutgoingDamageBonusMin + "-" + Mathf.Max(definition.OutgoingDamageBonusMin, definition.OutgoingDamageBonusMax)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(card.overrideJson))
+            {
+                details.Add(BuildDetailLine("Card overrides: applied"));
+            }
+
+            details.Add(BuildDetailSectionLabel("Terrain"));
+            details.Add(BuildDetailLine("Speed: " + BuildTerrainProfileSummary(definition.TerrainSpeedProfile)));
+            details.Add(BuildDetailLine("Path: " + BuildTerrainProfileSummary(definition.TerrainPathCostProfile)));
+
+            details.Add(BuildDetailSectionLabel("Ammo"));
+            var ammoLines = BuildAmmoLines(definition);
+            if (ammoLines.Count == 0)
+            {
+                details.Add(BuildDetailLine("No ammo configured."));
+            }
+            else
+            {
+                for (var i = 0; i < ammoLines.Count; i++)
+                {
+                    details.Add(BuildDetailLine(ammoLines[i], true));
+                }
+            }
+
+            if (card.equippedItemIds != null && card.equippedItemIds.Count > 0)
+            {
+                details.Add(BuildDetailSectionLabel("Modifiers"));
+                for (var i = 0; i < card.equippedItemIds.Count; i++)
+                {
+                    var ownedItem = FindOwnedUnitItem(card.equippedItemIds[i]);
+                    if (ownedItem == null)
+                    {
+                        continue;
+                    }
+
+                    var itemTitle = ownedItem.itemDefinitionId;
+                    var itemSummary = "Item";
+                    if (lootCatalogs != null && lootCatalogs.TryGetItemDefinition(ownedItem.itemDefinitionId, out var itemDefinition) && itemDefinition != null)
+                    {
+                        itemTitle = itemDefinition.displayName;
+                        itemSummary = BuildOwnedItemSubtitle(ownedItem, itemDefinition);
+                    }
+
+                    details.Add(BuildDetailLine(itemTitle + ": " + itemSummary, true));
+                }
+            }
+
+            return details;
+        }
+
+        private void OpenUnitDetailPopup(OwnedUnitCard card)
+        {
+            if (card == null || unitDetailOverlay == null || unitDetailTitle == null || unitDetailContent == null)
+            {
+                return;
+            }
+
+            unitDetailTitle.text = card.displayName + "  [" + card.baseTemplateId + "]";
+            unitDetailContent.Clear();
+            unitDetailContent.Add(BuildAssignedUnitDetails(card));
+            unitDetailOverlay.style.display = DisplayStyle.Flex;
+        }
+
+        private void CloseUnitDetailPopup()
+        {
+            if (unitDetailOverlay != null)
+            {
+                unitDetailOverlay.style.display = DisplayStyle.None;
+            }
+        }
+
+        private void OnUnitDetailOverlayPointerDown(PointerDownEvent evt)
+        {
+            if (evt == null || unitDetailOverlay == null)
+            {
+                return;
+            }
+
+            if (ReferenceEquals(evt.target, unitDetailOverlay))
+            {
+                CloseUnitDetailPopup();
+                evt.StopPropagation();
+            }
         }
 
         private void RefreshBoard()
@@ -466,9 +594,10 @@ namespace AutoBattler
                 if (mapItem != null && CampaignRuntimeContext.Instance.Catalogs.TryGetMapDefinition(mapItem.mapDefinitionId, out var mapDefinition))
                 {
                     lines.Add(string.Empty);
-                    lines.Add("Map: " + mapDefinition.displayName);
+                    lines.Add("Map: " + mapItem.instanceName);
                     lines.Add("Scene: " + mapDefinition.sceneName);
                     lines.Add("Tier: " + mapDefinition.tier);
+                    AppendMapModifierLines(lines, mapItem);
                     lines.Add(mapDefinition.description);
                 }
             }
@@ -539,6 +668,22 @@ namespace AutoBattler
                 AppendCardNames(lines, result.deadUnitCardIds);
             }
 
+            if (result.awardedUnitCards != null && result.awardedUnitCards.Count > 0)
+            {
+                lines.Add(string.Empty);
+                lines.Add("New Cards:");
+                for (var i = 0; i < result.awardedUnitCards.Count; i++)
+                {
+                    var awardedCard = result.awardedUnitCards[i];
+                    if (awardedCard == null)
+                    {
+                        continue;
+                    }
+
+                    lines.Add("- " + awardedCard.displayName + (string.IsNullOrWhiteSpace(awardedCard.sourceLabel) ? string.Empty : " [" + awardedCard.sourceLabel + "]"));
+                }
+            }
+
             if (result.claimedLoot != null && result.claimedLoot.Count > 0)
             {
                 lines.Add(string.Empty);
@@ -557,6 +702,22 @@ namespace AutoBattler
         {
             element.RegisterCallback<PointerDownEvent>(evt =>
             {
+                if (evt.button == 1)
+                {
+                    if (!string.IsNullOrWhiteSpace(activeCurrencyItemDefinitionId))
+                    {
+                        TryApplySelectedCurrencyToMap(mapItemId, evt);
+                    }
+                    evt.StopPropagation();
+                    return;
+                }
+
+                if (evt.button != 0)
+                {
+                    return;
+                }
+
+                ClearCurrencyCursor();
                 draggedItemInstanceId = string.Empty;
                 draggedMapItemId = mapItemId;
                 EnsureDragGhost();
@@ -571,6 +732,22 @@ namespace AutoBattler
         {
             element.RegisterCallback<PointerDownEvent>(evt =>
             {
+                if (evt.button == 1)
+                {
+                    if (!string.IsNullOrWhiteSpace(activeCurrencyItemDefinitionId))
+                    {
+                        TryApplySelectedCurrencyToItem(item.itemInstanceId, evt);
+                    }
+                    evt.StopPropagation();
+                    return;
+                }
+
+                if (evt.button != 0)
+                {
+                    return;
+                }
+
+                ClearCurrencyCursor();
                 draggedMapItemId = string.Empty;
                 draggedItemInstanceId = item.itemInstanceId;
                 EnsureDragGhost();
@@ -581,9 +758,34 @@ namespace AutoBattler
             });
         }
 
+        private void RegisterCurrencySelection(VisualElement element, string currencyItemDefinitionId, string displayName)
+        {
+            element.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                if (evt.button != 1)
+                {
+                    return;
+                }
+
+                if (string.Equals(activeCurrencyItemDefinitionId, currencyItemDefinitionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    ClearCurrencyCursor();
+                    SetStatus("Currency selection cleared.");
+                    RefreshAll();
+                    evt.StopPropagation();
+                    return;
+                }
+
+                ActivateCurrencyCursor(currencyItemDefinitionId, displayName, evt.position);
+                SetStatus(displayName + " selected. Right-click a valid item or map to apply it.");
+                RefreshAll();
+                evt.StopPropagation();
+            });
+        }
+
         private void OnRootPointerMove(PointerMoveEvent evt)
         {
-            if ((string.IsNullOrWhiteSpace(draggedMapItemId) && string.IsNullOrWhiteSpace(draggedItemInstanceId)) || draggedMapGhost == null)
+            if ((string.IsNullOrWhiteSpace(draggedMapItemId) && string.IsNullOrWhiteSpace(draggedItemInstanceId) && string.IsNullOrWhiteSpace(activeCurrencyItemDefinitionId)) || draggedMapGhost == null)
             {
                 return;
             }
@@ -591,8 +793,25 @@ namespace AutoBattler
             UpdateDragGhost(evt.position);
         }
 
+        private void OnRootPointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 1 || string.IsNullOrWhiteSpace(activeCurrencyItemDefinitionId))
+            {
+                return;
+            }
+
+            ClearCurrencyCursor();
+            SetStatus("Currency selection cleared.");
+            RefreshAll();
+        }
+
         private void OnRootPointerUp(PointerUpEvent evt)
         {
+            if (!string.IsNullOrWhiteSpace(activeCurrencyItemDefinitionId))
+            {
+                return;
+            }
+
             EndDrag();
         }
 
@@ -793,12 +1012,41 @@ namespace AutoBattler
         private string ResolveMapLabel(string mapItemId)
         {
             var mapItem = FindMapById(mapItemId);
-            if (mapItem != null && CampaignRuntimeContext.Instance.Catalogs.TryGetMapDefinition(mapItem.mapDefinitionId, out var definition))
+            if (mapItem != null)
             {
-                return definition.displayName;
+                return mapItem.instanceName;
             }
 
             return "MAP READY";
+        }
+
+        private static string BuildMapSubtitle(OwnedMapItem mapItem, MapDefinition definition)
+        {
+            var modifierCount = mapItem?.appliedMapModifiers?.Count ?? 0;
+            return modifierCount > 0
+                ? "Map  T" + (definition?.tier ?? 1) + "  Mods " + modifierCount
+                : "Map  T" + (definition?.tier ?? 1);
+        }
+
+        private static void AppendMapModifierLines(List<string> lines, OwnedMapItem mapItem)
+        {
+            if (lines == null || mapItem?.appliedMapModifiers == null || mapItem.appliedMapModifiers.Count == 0)
+            {
+                return;
+            }
+
+            lines.Add("Modifiers:");
+            for (var i = 0; i < mapItem.appliedMapModifiers.Count; i++)
+            {
+                var modifier = mapItem.appliedMapModifiers[i];
+                if (modifier == null)
+                {
+                    continue;
+                }
+
+                var label = string.IsNullOrWhiteSpace(modifier.displayName) ? modifier.mapModifierTemplateId : modifier.displayName;
+                lines.Add("- " + label);
+            }
         }
 
         private OwnedMapItem FindMapById(string mapItemId)
@@ -882,36 +1130,8 @@ namespace AutoBattler
             subtitleLabel.AddToClassList("equipped-item-chip-subtitle");
             chip.Add(subtitleLabel);
 
-            var modifyButton = new Button(() => TryModifyItem(item.itemInstanceId))
-            {
-                text = "Mod"
-            };
-            modifyButton.AddToClassList("equipped-item-chip-button");
-            modifyButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
-            chip.Add(modifyButton);
-
             RegisterItemDrag(chip, item, title);
             return chip;
-        }
-
-        private void TryModifyItem(string itemInstanceId)
-        {
-            const string currencyItemDefinitionId = "scrap_parts";
-            if (!CampaignRuntimeContext.Instance.TryApplyItemModification(itemInstanceId, currencyItemDefinitionId, out var error))
-            {
-                SetStatus(error);
-                return;
-            }
-
-            if (lootCatalogs != null && lootCatalogs.TryGetCurrencyItemDefinition(currencyItemDefinitionId, out var currencyDefinition) && currencyDefinition != null)
-            {
-                SetStatus(currencyDefinition.displayName + " applied.");
-            }
-            else
-            {
-                SetStatus("Item modified.");
-            }
-            RefreshAll();
         }
 
         private void EnsureCamera()
@@ -930,6 +1150,77 @@ namespace AutoBattler
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.1f, 0.14f, 0.16f);
             cameraObject.AddComponent<AudioListener>();
+        }
+
+        private static Label BuildDetailSectionLabel(string text)
+        {
+            var label = new Label(text);
+            label.AddToClassList("unit-card-section-label");
+            return label;
+        }
+
+        private static Label BuildDetailLine(string text, bool compact = false)
+        {
+            var label = new Label(text);
+            label.AddToClassList(compact ? "unit-card-detail-line-compact" : "unit-card-detail-line");
+            return label;
+        }
+
+        private static string BuildNavigationLabel(UnitDefinition definition)
+        {
+            return string.IsNullOrWhiteSpace(definition?.NavigationAgentType) ? "Default" : definition.NavigationAgentType;
+        }
+
+        private static string BuildTerrainProfileSummary(TerrainSpeedProfile profile)
+        {
+            if (profile == null || !profile.HasOverrides || profile.Modifiers == null || profile.Modifiers.Count == 0)
+            {
+                return "None";
+            }
+
+            var parts = new List<string>();
+            foreach (var pair in profile.Modifiers)
+            {
+                parts.Add(pair.Key + " " + pair.Value.ToString("0.##"));
+            }
+
+            return string.Join("  ", parts);
+        }
+
+        private static List<string> BuildAmmoLines(UnitDefinition definition)
+        {
+            var lines = new List<string>();
+            if (definition?.Ammunition == null || definition.AmmunitionCounts == null)
+            {
+                return lines;
+            }
+
+            for (var i = 0; i < definition.Ammunition.Length; i++)
+            {
+                var ammo = definition.Ammunition[i];
+                if (ammo == null)
+                {
+                    continue;
+                }
+
+                var count = i < definition.AmmunitionCounts.Length ? definition.AmmunitionCounts[i] : 0;
+                var countLabel = count < 0 ? "inf" : count.ToString();
+                lines.Add(ammo.AmmoName
+                    + " x" + countLabel
+                    + "  Dmg " + FormatDamageRange(ammo.DamageMin, ammo.DamageMax)
+                    + "  Rad " + ammo.Radius.ToString("0.##")
+                    + "  Rng " + ammo.AttackRange.ToString("0.##")
+                    + "  Rld " + ammo.ReloadTime.ToString("0.##")
+                    + "  Acc " + ammo.Accuracy.ToString("0.##")
+                    + "  Rel " + ammo.DamageReliability.ToString("0.##"));
+            }
+
+            return lines;
+        }
+
+        private static string FormatDamageRange(int minDamage, int maxDamage)
+        {
+            return minDamage == maxDamage ? minDamage.ToString() : minDamage + "-" + maxDamage;
         }
 
         private string BuildOwnedItemSubtitle(OwnedUnitItem item, ItemDefinition definition)
@@ -1030,6 +1321,77 @@ namespace AutoBattler
         private void SetStatus(string message)
         {
             statusLabel.text = message;
+        }
+
+        private void ActivateCurrencyCursor(string currencyItemDefinitionId, string displayName, Vector2 position)
+        {
+            EndDrag();
+            activeCurrencyItemDefinitionId = currencyItemDefinitionId;
+            activeCurrencyDisplayName = displayName;
+            EnsureDragGhost();
+            draggedMapGhost.Q<Label>("DragLabel").text = displayName;
+            draggedMapGhost.style.display = DisplayStyle.Flex;
+            UpdateDragGhost(position);
+        }
+
+        private void ClearCurrencyCursor()
+        {
+            activeCurrencyItemDefinitionId = string.Empty;
+            activeCurrencyDisplayName = string.Empty;
+            if (draggedMapGhost != null && string.IsNullOrWhiteSpace(draggedMapItemId) && string.IsNullOrWhiteSpace(draggedItemInstanceId))
+            {
+                draggedMapGhost.style.display = DisplayStyle.None;
+            }
+        }
+
+        private void TryApplySelectedCurrencyToItem(string itemInstanceId, PointerDownEvent evt)
+        {
+            if (string.IsNullOrWhiteSpace(activeCurrencyItemDefinitionId))
+            {
+                return;
+            }
+
+            if (!CampaignRuntimeContext.Instance.TryApplyItemModification(itemInstanceId, activeCurrencyItemDefinitionId, out var error))
+            {
+                SetStatus(error);
+                return;
+            }
+
+            var keepSelected = (evt.modifiers & EventModifiers.Shift) != 0
+                && CampaignRuntimeContext.Instance.GetCurrencyAmount(activeCurrencyItemDefinitionId) > 0;
+
+            SetStatus(activeCurrencyDisplayName + " applied.");
+            if (!keepSelected)
+            {
+                ClearCurrencyCursor();
+            }
+
+            RefreshAll();
+        }
+
+        private void TryApplySelectedCurrencyToMap(string mapItemId, PointerDownEvent evt)
+        {
+            if (string.IsNullOrWhiteSpace(activeCurrencyItemDefinitionId))
+            {
+                return;
+            }
+
+            if (!CampaignRuntimeContext.Instance.TryApplyMapModification(mapItemId, activeCurrencyItemDefinitionId, out var error))
+            {
+                SetStatus(error);
+                return;
+            }
+
+            var keepSelected = (evt.modifiers & EventModifiers.Shift) != 0
+                && CampaignRuntimeContext.Instance.GetCurrencyAmount(activeCurrencyItemDefinitionId) > 0;
+
+            SetStatus(activeCurrencyDisplayName + " applied to map.");
+            if (!keepSelected)
+            {
+                ClearCurrencyCursor();
+            }
+
+            RefreshAll();
         }
 
         private void ClearStatus()

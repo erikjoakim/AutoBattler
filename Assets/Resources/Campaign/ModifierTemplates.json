@@ -5,7 +5,10 @@
       "displayName": "Reinforced Lining",
       "description": "Adds layered interior protection.",
       "modifierType": "MaxHealth",
-      "itemType": "Utility",
+      "itemTypes": [
+        "Utility",
+        "Turret"
+      ],
       "tier": 1,
       "weight": 10,
       "rollAMin": 1,
@@ -16,7 +19,9 @@
       "displayName": "Plated Bracing",
       "description": "Adds extra armor support.",
       "modifierType": "Armor",
-      "itemType": "Utility",
+      "itemTypes": [
+        "Utility"
+      ],
       "tier": 1,
       "weight": 8,
       "rollAMin": 1,
@@ -27,7 +32,9 @@
       "displayName": "Reactive Charge Matrix",
       "description": "Adds a fluctuating damage band.",
       "modifierType": "Damage",
-      "itemType": "Utility",
+      "itemTypes": [
+        "Utility"
+      ],
       "tier": 1,
       "weight": 4,
       "rollAMin": 1,
@@ -40,7 +47,9 @@
       "displayName": "Legacy Armor Reinforcement",
       "description": "Converted from a previous item upgrade.",
       "modifierType": "Armor",
-      "itemType": "Utility",
+      "itemTypes": [
+        "Utility"
+      ],
       "tier": 1,
       "weight": 1,
       "rollAMin": 1,

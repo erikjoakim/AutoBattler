@@ -4,8 +4,16 @@
   "startingMaps": [
     {
       "mapDefinitionId": "sample_operation",
-      "count": 3,
+      "count": 2,
       "instanceNamePrefix": "Sample Operation"
+    },
+    {
+      "mapDefinitionId": "sample_operation",
+      "count": 1,
+      "instanceNamePrefix": "Reinforced Sample Operation",
+      "appliedMapModifierTemplateIds": [
+        "enemy_all_health_t1"
+      ]
     }
   ],
   "startingUnitCards": [
@@ -28,6 +36,12 @@
           "ammunitionCount": 5
         }
       ]
+    }
+  ],
+  "startingCurrencyItems": [
+    {
+      "currencyItemDefinitionId": "map_survey_orb",
+      "amount": 2
     }
   ]
 }

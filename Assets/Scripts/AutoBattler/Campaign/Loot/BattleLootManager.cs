@@ -131,6 +131,7 @@ namespace AutoBattler
             }
 
             RollLootTable(lootTableId, "Scenario Victory");
+            TryRollBonusVictoryEntry(lootTableId, "Scenario Victory");
         }
 
         private string ResolveVictoryLootTableId()
@@ -214,17 +215,83 @@ namespace AutoBattler
                 return;
             }
 
+            var scaledAmount = ScaleDropAmount(entry);
             droppedLoot.Add(new DroppedLootEntry
             {
                 lootItemId = entry.entryId,
                 displayName = string.IsNullOrWhiteSpace(entry.displayName) ? entry.entryId : entry.displayName,
                 rewardType = entry.rewardType,
-                amount = Mathf.Max(1, entry.amount),
+                amount = scaledAmount,
                 mapDefinitionId = entry.mapDefinitionId,
                 itemDefinitionId = entry.itemDefinitionId,
                 currencyItemDefinitionId = entry.currencyItemDefinitionId,
                 sourceDescription = sourceDescription
             });
+        }
+
+        private void TryRollBonusVictoryEntry(string lootTableId, string sourceDescription)
+        {
+            var rewardProfile = GetRewardProfile();
+            if (rewardProfile == null || rewardProfile.bonusLootRollChance <= 0f || UnityEngine.Random.value > rewardProfile.bonusLootRollChance)
+            {
+                return;
+            }
+
+            if (!catalogs.TryGetLootTable(lootTableId, out var lootTable) || lootTable?.entries == null || lootTable.entries.Count == 0)
+            {
+                return;
+            }
+
+            var candidates = new List<LootTableEntryDefinition>();
+            for (var i = 0; i < lootTable.entries.Count; i++)
+            {
+                var entry = lootTable.entries[i];
+                if (entry != null && !entry.guaranteed)
+                {
+                    candidates.Add(entry);
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                for (var i = 0; i < lootTable.entries.Count; i++)
+                {
+                    if (lootTable.entries[i] != null)
+                    {
+                        candidates.Add(lootTable.entries[i]);
+                    }
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                return;
+            }
+
+            TryAddDrop(candidates[UnityEngine.Random.Range(0, candidates.Count)], sourceDescription + " Bonus");
+        }
+
+        private int ScaleDropAmount(LootTableEntryDefinition entry)
+        {
+            var baseAmount = Mathf.Max(1, entry.amount);
+            if (entry.rewardType != LootRewardType.Gold && entry.rewardType != LootRewardType.CurrencyItem)
+            {
+                return baseAmount;
+            }
+
+            var rewardProfile = GetRewardProfile();
+            if (rewardProfile == null || rewardProfile.rewardMultiplier <= 1f)
+            {
+                return baseAmount;
+            }
+
+            return Mathf.Max(1, Mathf.RoundToInt(baseAmount * rewardProfile.rewardMultiplier));
+        }
+
+        private PreparedMissionRewardProfile GetRewardProfile()
+        {
+            var mission = CampaignRuntimeContext.Instance != null ? CampaignRuntimeContext.Instance.ActiveMission : null;
+            return mission?.rewardProfile;
         }
 
         private static List<DroppedLootEntry> CloneLootEntries(List<DroppedLootEntry> source)
