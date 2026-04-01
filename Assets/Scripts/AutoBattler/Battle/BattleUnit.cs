@@ -89,6 +89,13 @@ namespace AutoBattler
                 return;
             }
 
+            var visibleSpawner = BattleSpawnerRegistry.GetClosestEnemySpawner(this, unitDefinition.VisionRange);
+            if (visibleSpawner != null)
+            {
+                EngageSpawner(visibleSpawner);
+                return;
+            }
+
             if (Mission == MissionType.Guard)
             {
                 ReturnToGuardPosition();
@@ -180,10 +187,17 @@ namespace AutoBattler
                 return;
             }
 
-            BattleUnitRegistry.ApplySplashDamage(Team, impactPoint, ResolveOutgoingDamage(ammo), ammo.Radius, this);
+            var outgoingDamage = ResolveOutgoingDamage(ammo);
+            BattleUnitRegistry.ApplySplashDamage(Team, impactPoint, outgoingDamage, ammo.Radius, this);
+            BattleSpawnerRegistry.ApplySplashDamage(Team, impactPoint, outgoingDamage, Mathf.Max(ammo.Radius, 0.9f), this);
         }
 
         private bool TrySelectBestAmmo(BattleUnit target, float distanceToTarget, out int bestAmmoIndex, out AmmoDefinition bestAmmo)
+        {
+            return TrySelectBestAmmo(target != null ? target.transform.position : transform.position, distanceToTarget, out bestAmmoIndex, out bestAmmo);
+        }
+
+        private bool TrySelectBestAmmo(Vector3 targetPosition, float distanceToTarget, out int bestAmmoIndex, out AmmoDefinition bestAmmo)
         {
             bestAmmo = null;
             bestAmmoIndex = -1;
@@ -206,7 +220,7 @@ namespace AutoBattler
                     continue;
                 }
 
-                var splashHits = BattleUnitRegistry.CountEnemiesInRadius(Team, target.transform.position, candidate.Radius);
+                var splashHits = BattleUnitRegistry.CountEnemiesInRadius(Team, targetPosition, candidate.Radius);
                 var score = splashHits * candidate.DamageMax;
                 if (score > bestScore)
                 {
@@ -240,6 +254,61 @@ namespace AutoBattler
             }
 
             return maxRange;
+        }
+
+        private void EngageSpawner(EnemySpawnerRuntime targetSpawner)
+        {
+            if (targetSpawner == null || !targetSpawner.IsTargetableBy(Team))
+            {
+                return;
+            }
+
+            var targetPosition = targetSpawner.Position;
+            FaceTowards(targetPosition);
+
+            var distance = GetDistanceTo(targetPosition);
+            var maxAttackRange = GetMaxAvailableAttackRange();
+            if (maxAttackRange <= 0f)
+            {
+                ClearMovement();
+                return;
+            }
+
+            if (distance > maxAttackRange)
+            {
+                MoveTowards(targetPosition, Mathf.Max(0.25f, maxAttackRange * 0.9f));
+                return;
+            }
+
+            PauseMovement();
+            if (Time.time < nextAttackTime)
+            {
+                return;
+            }
+
+            if (!TrySelectBestAmmo(targetPosition, distance, out var ammoIndex, out var ammo))
+            {
+                return;
+            }
+
+            nextAttackTime = Time.time + ammo.ReloadTime;
+            ConsumeAmmo(ammoIndex);
+
+            if (!CombatRoller.RollProbability(unitDefinition.FireReliability))
+            {
+                return;
+            }
+
+            var finalAccuracy = CombatRoller.CombineProbability(unitDefinition.Accuracy, ammo.Accuracy);
+            var impactPoint = CombatRoller.ResolveImpactPoint(targetPosition, distance, finalAccuracy);
+            if (!CombatRoller.RollProbability(ammo.DamageReliability))
+            {
+                return;
+            }
+
+            var outgoingDamage = ResolveOutgoingDamage(ammo);
+            BattleUnitRegistry.ApplySplashDamage(Team, impactPoint, outgoingDamage, ammo.Radius, this);
+            BattleSpawnerRegistry.ApplySplashDamage(Team, impactPoint, outgoingDamage, Mathf.Max(ammo.Radius, 0.9f), this);
         }
 
         private float GetMaxConfiguredAttackRange()

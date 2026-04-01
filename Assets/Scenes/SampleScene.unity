@@ -119,6 +119,69 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &201903172
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 201903174}
+  - component: {fileID: 201903173}
+  m_Layer: 0
+  m_Name: EnemySpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &201903173
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 201903172}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f949f764b55cbb42aff451fe22e70bc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AutoBattler.EnemySpawnerMarker
+  spawnerId: EnemySpawner
+  spawnerConfigAsset: {fileID: 4900000, guid: bea0ca8c00780f44a96f2be98ec26003, type: 3}
+  spawnRadius: 6.56
+  startTime: 0
+  spawnInterval: 10
+  initialBurstCount: 0
+  countPerWave: 1
+  totalSpawnLimit: 10
+  aliveUnitCap: 4
+  spawnedUnitMission: 1
+  targetVictoryPointId: 
+  isDestructible: 0
+  maxHealth: 20
+  armor: 2
+  destroyedStopsSpawning: 1
+  spawnTable:
+  - unitType: 
+    weight: 0
+    maxSpawns: 0
+--- !u!4 &201903174
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 201903172}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 49.01223, y: -0, z: 22.74044}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &220803153
 GameObject:
   m_ObjectHideFlags: 0
@@ -860,3 +923,4 @@ SceneRoots:
   - {fileID: 1242544188}
   - {fileID: 1993315277}
   - {fileID: 1828083176}
+  - {fileID: 201903174}

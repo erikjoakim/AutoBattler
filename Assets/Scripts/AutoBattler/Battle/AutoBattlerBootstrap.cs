@@ -51,8 +51,10 @@ namespace AutoBattler
             ValidateSceneLayout(layout, config);
             scenario.ValidateSceneSetup();
             ConfigureCamera(layout);
-            SpawnBattlefield(layout, config);
+            var unitsRoot = SpawnBattlefield(layout, config);
             InitializeObjectives(layout, scenario);
+            InitializeSpawners(layout, unitsRoot);
+            LogBattleSetupSummary(layout, scenario);
         }
 
         private void EnsureSupportObjects()
@@ -130,7 +132,7 @@ namespace AutoBattler
             }
         }
 
-        private void SpawnBattlefield(SceneLayout layout, SceneBattleConfig config)
+        private Transform SpawnBattlefield(SceneLayout layout, SceneBattleConfig config)
         {
             var existingRoot = GameObject.Find("UnitsRoot");
             if (existingRoot != null)
@@ -141,6 +143,33 @@ namespace AutoBattler
             var unitsRoot = new GameObject("UnitsRoot");
             SpawnTeam(unitsRoot.transform, Team.Blue, layout.BlueStartAreas, layout.GetInitialObjectivePoint(Team.Blue), config.blueTeam, config.formation);
             SpawnTeam(unitsRoot.transform, Team.Red, layout.RedStartAreas, layout.GetInitialObjectivePoint(Team.Red), config.redTeam, config.formation);
+            return unitsRoot.transform;
+        }
+
+        private void InitializeSpawners(SceneLayout layout, Transform unitsRoot)
+        {
+            if (layout.EnemySpawners == null || layout.EnemySpawners.Length == 0)
+            {
+                return;
+            }
+
+            var fallbackObjective = layout.GetInitialObjectivePoint(Team.Red);
+            for (var i = 0; i < layout.EnemySpawners.Length; i++)
+            {
+                var marker = layout.EnemySpawners[i];
+                if (marker == null)
+                {
+                    continue;
+                }
+
+                var runtime = marker.GetComponent<EnemySpawnerRuntime>();
+                if (runtime == null)
+                {
+                    runtime = marker.gameObject.AddComponent<EnemySpawnerRuntime>();
+                }
+
+                runtime.Initialize(marker, unitsRoot, layout.VictoryPoints, fallbackObjective);
+            }
         }
 
         private void InitializeObjectives(SceneLayout layout, BattleScenario scenario)
@@ -208,7 +237,7 @@ namespace AutoBattler
                     var area = startAreas[areaIndex];
                     var areaLocalIndex = areaSpawnCounts[areaIndex]++;
                     var worldPosition = area.GetSpawnPosition(areaLocalIndex, areaUnitTotals[areaIndex], formation);
-                    SpawnUnit(
+                    BattleSpawnUtility.SpawnUnit(
                         parent,
                         definition,
                         team,
@@ -388,32 +417,6 @@ namespace AutoBattler
             return existingPoint != null ? existingPoint.transform.position : fallbackPosition;
         }
 
-        private static void SpawnUnit(
-            Transform parent,
-            UnitDefinition definition,
-            Team team,
-            MissionType mission,
-            Vector3 position,
-            Vector3 targetPoint,
-            string ownedUnitCardId = null,
-            string lootTableId = null,
-            bool returnToHeadquartersIfSurvives = false,
-            bool captureAsUnitCardOnDeath = false,
-            string persistentOverrideJson = null)
-        {
-            var unitObject = UnitFactory.CreateUnitObject(definition, team, parent, position);
-            unitObject.name = team + " " + definition.UnitName + " " + mission;
-
-            var unit = unitObject.AddComponent<BattleUnit>();
-            unit.Initialize(definition, team, mission, position, targetPoint, lootTableId);
-            if (!string.IsNullOrWhiteSpace(ownedUnitCardId))
-            {
-                unit.LinkOwnedUnitCard(ownedUnitCardId);
-            }
-
-            unit.ConfigureCampaignTransfer(returnToHeadquartersIfSurvives, captureAsUnitCardOnDeath, persistentOverrideJson);
-        }
-
         private void ValidateSceneLayout(SceneLayout layout, SceneBattleConfig config)
         {
             if (layout.VictoryPoints.Length == 0)
@@ -421,10 +424,67 @@ namespace AutoBattler
                 Debug.LogWarning("No victory points were found in the scene. Battle will fall back to elimination-only victory.");
             }
 
+            if (config.blueTeam == null || config.blueTeam.units == null || config.blueTeam.units.Length == 0)
+            {
+                Debug.LogWarning("No player units were configured for this battle scene.");
+            }
+
             if ((config.redTeam == null || config.redTeam.units == null || config.redTeam.units.Length == 0) && layout.RedStartAreas.Length == 0)
             {
                 Debug.LogWarning("No enemy start areas and no configured enemy units were found.");
             }
+
+            if (layout.EnemySpawners == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < layout.EnemySpawners.Length; i++)
+            {
+                var marker = layout.EnemySpawners[i];
+                if (marker == null)
+                {
+                    continue;
+                }
+
+                if (!marker.TryGetResolvedConfig(out var spawnerConfig, out var warning))
+                {
+                    Debug.LogWarning("Spawner '" + marker.name + "' is using fallback config. " + warning);
+                }
+
+                if (spawnerConfig == null)
+                {
+                    Debug.LogWarning("Spawner '" + marker.name + "' has no resolved configuration.");
+                    continue;
+                }
+
+                if (spawnerConfig.spawnTable == null || spawnerConfig.spawnTable.Length == 0)
+                {
+                    Debug.LogWarning("Spawner '" + marker.name + "' has an empty spawn table.");
+                }
+
+                if (spawnerConfig.totalSpawnLimit == 0)
+                {
+                    Debug.LogWarning("Spawner '" + marker.name + "' has a total spawn limit of 0 and will never spawn reinforcements.");
+                }
+
+                if (spawnerConfig.aliveUnitCap < spawnerConfig.countPerWave)
+                {
+                    Debug.LogWarning("Spawner '" + marker.name + "' has an alive-unit cap lower than its wave size.");
+                }
+            }
+        }
+
+        private void LogBattleSetupSummary(SceneLayout layout, BattleScenario scenario)
+        {
+            var rewardProfile = CampaignRuntimeContext.Instance?.ActiveMission?.rewardProfile;
+            var spawnerCount = layout.EnemySpawners?.Length ?? 0;
+            var modifierCount = CampaignRuntimeContext.Instance?.FindActiveMissionMapModifierCount() ?? 0;
+            Debug.Log("Battle scene ready. Mission: " + (scenario != null ? scenario.MissionName : gameObject.scene.name)
+                + "  Reward x" + (rewardProfile != null ? rewardProfile.rewardMultiplier.ToString("0.00") : "1.00")
+                + "  Threat x" + (rewardProfile != null ? Mathf.Max(1f, rewardProfile.threatRatio).ToString("0.00") : "1.00")
+                + "  Spawners: " + spawnerCount
+                + "  MapModifiers: " + modifierCount);
         }
 
         private static BattleScenario ResolveScenario()

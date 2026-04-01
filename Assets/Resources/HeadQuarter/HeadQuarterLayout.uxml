@@ -21,7 +21,9 @@
                 </ui:VisualElement>
                 <ui:VisualElement name="MapBriefingPanel" class="sub-panel split-sub-panel briefing-panel">
                     <ui:Label text="Map Briefing" class="sub-panel-title" />
-                    <ui:Label name="MapDetails" class="details-label" />
+                    <ui:ScrollView name="MapDetailsScroll" class="briefing-scroll" mode="Vertical">
+                        <ui:Label name="MapDetails" class="details-label" />
+                    </ui:ScrollView>
                     <ui:VisualElement name="MissionButtons" class="button-row">
                         <ui:Button name="OpenMapButton" text="Open Map" class="action-button primary-button" />
                         <ui:Button name="ClearHexButton" text="Clear Hex" class="action-button secondary-button action-button-last" />

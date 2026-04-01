@@ -117,7 +117,7 @@
 .details-label {
     white-space: normal;
     font-size: 15px;
-    min-height: 160px;
+    min-height: 0;
     color: rgb(223, 230, 221);
 }
 
@@ -169,6 +169,39 @@
     padding-right: 18px;
 }
 
+.hq-cursor-map .status-bar {
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(188, 122, 46, 0.85);
+    border-right-color: rgba(188, 122, 46, 0.85);
+    border-bottom-color: rgba(188, 122, 46, 0.85);
+    border-left-color: rgba(188, 122, 46, 0.85);
+}
+
+.hq-cursor-item .status-bar {
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(78, 162, 109, 0.85);
+    border-right-color: rgba(78, 162, 109, 0.85);
+    border-bottom-color: rgba(78, 162, 109, 0.85);
+    border-left-color: rgba(78, 162, 109, 0.85);
+}
+
+.hq-cursor-currency .status-bar {
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(98, 151, 205, 0.85);
+    border-right-color: rgba(98, 151, 205, 0.85);
+    border-bottom-color: rgba(98, 151, 205, 0.85);
+    border-left-color: rgba(98, 151, 205, 0.85);
+}
+
 .status-label {
     font-size: 17px;
     color: rgb(226, 231, 220);
@@ -187,6 +220,12 @@
 .briefing-panel {
     margin-top: 12px;
     flex-grow: 1;
+    min-height: 0;
+}
+
+.briefing-scroll {
+    flex-grow: 1;
+    min-height: 0;
 }
 
 #InventoryPanel {
@@ -269,6 +308,17 @@
     border-left-color: rgb(241, 228, 182);
 }
 
+.hex-valid-target {
+    border-top-color: rgb(122, 205, 141);
+    border-right-color: rgb(122, 205, 141);
+    border-bottom-color: rgb(122, 205, 141);
+    border-left-color: rgb(122, 205, 141);
+}
+
+.hex-invalid-target {
+    opacity: 0.75;
+}
+
 .inventory-card,
 .unit-card {
     min-height: 74px;
@@ -327,6 +377,40 @@
     background-color: rgba(50, 69, 51, 0.92);
 }
 
+.inventory-card-selected {
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+    border-top-color: rgb(230, 210, 137);
+    border-right-color: rgb(230, 210, 137);
+    border-bottom-color: rgb(230, 210, 137);
+    border-left-color: rgb(230, 210, 137);
+}
+
+.inventory-card-valid-target {
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+    border-top-color: rgb(122, 205, 141);
+    border-right-color: rgb(122, 205, 141);
+    border-bottom-color: rgb(122, 205, 141);
+    border-left-color: rgb(122, 205, 141);
+}
+
+.inventory-card-invalid-target {
+    opacity: 0.6;
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(148, 78, 78, 0.9);
+    border-right-color: rgba(148, 78, 78, 0.9);
+    border-bottom-color: rgba(148, 78, 78, 0.9);
+    border-left-color: rgba(148, 78, 78, 0.9);
+}
+
 .inventory-card-title,
 #UnitName {
     font-size: 16px;
@@ -365,6 +449,21 @@
     background-color: rgba(83, 66, 34, 0.94);
 }
 
+.unit-card-valid-target {
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+    border-top-color: rgb(122, 205, 141);
+    border-right-color: rgb(122, 205, 141);
+    border-bottom-color: rgb(122, 205, 141);
+    border-left-color: rgb(122, 205, 141);
+}
+
+.unit-card-invalid-target {
+    opacity: 0.58;
+}
+
 .unit-card-text {
     flex-grow: 1;
 }
@@ -391,6 +490,21 @@
     padding-right: 8px;
     border-radius: 8px;
     background-color: rgba(77, 72, 35, 0.92);
+}
+
+.equipped-item-chip-valid-target {
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+    border-top-color: rgb(122, 205, 141);
+    border-right-color: rgb(122, 205, 141);
+    border-bottom-color: rgb(122, 205, 141);
+    border-left-color: rgb(122, 205, 141);
+}
+
+.equipped-item-chip-invalid-target {
+    opacity: 0.58;
 }
 
 .equipped-item-chip-title {
@@ -482,6 +596,18 @@
     font-size: 14px;
     color: rgb(249, 248, 242);
     display: none;
+}
+
+.dragged-ghost-map {
+    background-color: rgba(188, 122, 46, 0.95);
+}
+
+.dragged-ghost-item {
+    background-color: rgba(64, 124, 84, 0.96);
+}
+
+.dragged-ghost-currency {
+    background-color: rgba(84, 110, 142, 0.96);
 }
 
 .detail-overlay {

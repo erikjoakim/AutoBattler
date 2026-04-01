@@ -1,0 +1,37 @@
+{
+  "spawnerId": "EnemySpawner",
+  "startTime": 5.0,
+  "spawnInterval": 15.0,
+  "initialBurstCount": 1,
+  "countPerWave": 1,
+  "totalSpawnLimit": 6,
+  "aliveUnitCap": 3,
+  "spawnedUnitMission": "SeekAndDestroy",
+  "targetVictoryPointId": "",
+  "isDestructible": true,
+  "maxHealth": 20,
+  "armor": 2,
+  "destroyedStopsSpawning": true,
+  "spawnTable": [
+    {
+      "unitType": "Guard Infantry",
+      "weight": 3
+    },
+    {
+      "weight": 1,
+      "maxSpawns": 1,
+      "unit": {
+        "unitType": "Raider Infantry",
+        "unitName": "Black Fang",
+        "maxHealth": "+3",
+        "speed": "+0.4",
+        "accuracy": "+0.06",
+        "lootTableId": "enemy_unit_basic"
+      }
+    },
+    {
+      "unitType": "Guard Tank",
+      "weight": 1
+    }
+  ]
+}

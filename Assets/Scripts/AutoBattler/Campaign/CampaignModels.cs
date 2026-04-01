@@ -51,6 +51,12 @@ namespace AutoBattler
         public string displayName;
         public string sceneName;
         public string description;
+        public string missionName;
+        public string missionDescription;
+        public string primaryObjective;
+        public string loseCondition;
+        public List<string> scenarioTags = new List<string>();
+        public bool hasSpawners;
         public int tier = 1;
         public string baseLootTableId;
     }

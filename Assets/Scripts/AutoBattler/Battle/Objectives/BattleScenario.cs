@@ -152,6 +152,59 @@ namespace AutoBattler
             return string.IsNullOrWhiteSpace(missionDescription) ? "Mission objectives complete" : missionDescription;
         }
 
+        public string GetPrimaryObjectiveSummary()
+        {
+            if (!isInitialized)
+            {
+                return "Preparing mission objectives...";
+            }
+
+            var activeSummary = GetNextOutstandingObjectiveSummary(playerWinConditions, playerWinProgressSeconds, Team.Blue);
+            return string.IsNullOrWhiteSpace(activeSummary) ? "Mission objectives complete" : activeSummary;
+        }
+
+        public string GetLoseConditionSummary()
+        {
+            if (!isInitialized)
+            {
+                return "Awaiting scenario rules...";
+            }
+
+            var loseSummary = GetNextOutstandingObjectiveSummary(playerLoseConditions, playerLoseProgressSeconds, Team.Red);
+            return string.IsNullOrWhiteSpace(loseSummary) ? "No active fail condition." : loseSummary;
+        }
+
+        public bool HasSpawnerPresence()
+        {
+            return CountValidSpawners(spawners) > 0;
+        }
+
+        public string GetScenarioTagSummary()
+        {
+            var tags = new List<string>();
+            if (HasSpawnerPresence())
+            {
+                tags.Add("Spawner Threat");
+            }
+
+            if (HasTimedCondition(playerWinConditions) || HasTimedCondition(playerLoseConditions))
+            {
+                tags.Add("Timed");
+            }
+
+            if (HasCaptureCondition(playerWinConditions))
+            {
+                tags.Add("Assault");
+            }
+
+            if (tags.Count == 0)
+            {
+                tags.Add("Battle");
+            }
+
+            return string.Join(" | ", tags);
+        }
+
         public string GetProgressSummary()
         {
             if (!isInitialized)
@@ -453,6 +506,60 @@ namespace AutoBattler
             }
         }
 
+        private static bool HasTimedCondition(ScenarioConditionEntry[] conditions)
+        {
+            if (conditions == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < conditions.Length; i++)
+            {
+                var condition = conditions[i];
+                if (condition == null)
+                {
+                    continue;
+                }
+
+                switch (condition.conditionType)
+                {
+                    case ScenarioConditionType.SurviveForTime:
+                    case ScenarioConditionType.HoldSpecificVictoryPointsForTime:
+                    case ScenarioConditionType.TimeExpires:
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasCaptureCondition(ScenarioConditionEntry[] conditions)
+        {
+            if (conditions == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < conditions.Length; i++)
+            {
+                var condition = conditions[i];
+                if (condition == null)
+                {
+                    continue;
+                }
+
+                switch (condition.conditionType)
+                {
+                    case ScenarioConditionType.CaptureAllRequiredVictoryPoints:
+                    case ScenarioConditionType.CaptureSpecificVictoryPoints:
+                    case ScenarioConditionType.HoldSpecificVictoryPointsForTime:
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
         private string BuildOutcomeMessage(
             Team winner,
             ScenarioConditionEntry[] conditions,
@@ -608,7 +715,9 @@ namespace AutoBattler
             var count = 0;
             for (var i = 0; i < targetSpawners.Length; i++)
             {
-                if (targetSpawners[i] == null || !targetSpawners[i].gameObject.activeInHierarchy)
+                if (targetSpawners[i] == null
+                    || !targetSpawners[i].gameObject.activeInHierarchy
+                    || BattleSpawnerRegistry.IsSpawnerDestroyed(targetSpawners[i]))
                 {
                     count++;
                 }

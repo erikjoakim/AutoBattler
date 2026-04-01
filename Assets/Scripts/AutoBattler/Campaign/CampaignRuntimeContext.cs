@@ -58,6 +58,8 @@ namespace AutoBattler
             catalogs = CampaignCatalogLoader.Load();
             lootCatalogs = LootCatalogLoader.Load();
             saveData = LoadOrCreateSave();
+            ValidateCatalogsAndSave();
+            LogCatalogSummary();
             SceneManager.sceneLoaded += OnSceneLoaded;
         }
 
@@ -105,6 +107,16 @@ namespace AutoBattler
         public IReadOnlyList<OwnedUnitItem> GetOwnedUnitItems()
         {
             return saveData.ownedUnitItems;
+        }
+
+        public int FindActiveMissionMapModifierCount()
+        {
+            if (activeMission == null)
+            {
+                return 0;
+            }
+
+            return FindMapItem(activeMission.mapItemId)?.appliedMapModifiers?.Count ?? 0;
         }
 
         public IReadOnlyList<OwnedUnitItem> GetEquippedUnitItems(string unitCardId)
@@ -369,6 +381,14 @@ namespace AutoBattler
             return true;
         }
 
+        public bool CanEquipItemToUnitCard(string itemInstanceId, string unitCardId, out string error)
+        {
+            error = string.Empty;
+            var item = FindOwnedUnitItem(itemInstanceId);
+            var card = FindUnitCard(unitCardId);
+            return CanEquipItemToCard(item, card, out error);
+        }
+
         public bool TryUnequipItemFromUnitCard(string itemInstanceId, string unitCardId, out string error)
         {
             error = string.Empty;
@@ -455,9 +475,76 @@ namespace AutoBattler
             return true;
         }
 
-        public bool TryApplyMapModification(string mapItemId, string currencyItemDefinitionId, out string error)
+        public bool CanApplyItemModification(string itemInstanceId, string currencyItemDefinitionId, out string error)
         {
             error = string.Empty;
+            var item = FindOwnedUnitItem(itemInstanceId);
+            if (item == null)
+            {
+                error = "Unable to find the selected item.";
+                return false;
+            }
+
+            if (lootCatalogs == null || !lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out var definition) || definition == null)
+            {
+                error = "The selected item definition was not found.";
+                return false;
+            }
+
+            if (lootCatalogs == null || !lootCatalogs.TryGetCurrencyItemDefinition(currencyItemDefinitionId, out var currencyDefinition) || currencyDefinition == null)
+            {
+                error = "The selected currency definition was not found.";
+                return false;
+            }
+
+            if (currencyDefinition.targetTypes != null
+                && currencyDefinition.targetTypes.Count > 0
+                && !ContainsIgnoreCase(currencyDefinition.targetTypes, definition.itemType))
+            {
+                error = "That currency cannot be used on " + definition.itemType + " items.";
+                return false;
+            }
+
+            return currencyDefinition.actionType switch
+            {
+                CurrencyActionType.AddModifiers => CanApplyAddModifiersCurrency(item, definition, currencyDefinition, out error),
+                _ => UnsupportedCurrencyAction(currencyDefinition, out error)
+            };
+        }
+
+        public bool TryApplyMapModification(string mapItemId, string currencyItemDefinitionId, out string error)
+        {
+            if (!TryResolveMapModificationContext(mapItemId, currencyItemDefinitionId, out var mapItem, out var mapDefinition, out var currencyDefinition, out error))
+            {
+                return false;
+            }
+
+            return currencyDefinition.actionType switch
+            {
+                CurrencyActionType.AddModifiers => TryApplyAddModifiersCurrencyToMap(mapItem, mapDefinition, currencyDefinition, out error),
+                _ => UnsupportedCurrencyAction(currencyDefinition, out error)
+            };
+        }
+
+        public bool CanApplyMapModification(string mapItemId, string currencyItemDefinitionId, out string error)
+        {
+            if (!TryResolveMapModificationContext(mapItemId, currencyItemDefinitionId, out var mapItem, out var mapDefinition, out var currencyDefinition, out error))
+            {
+                return false;
+            }
+
+            return currencyDefinition.actionType switch
+            {
+                CurrencyActionType.AddModifiers => CanApplyAddModifiersCurrencyToMap(mapItem, mapDefinition, currencyDefinition, out error),
+                _ => UnsupportedCurrencyAction(currencyDefinition, out error)
+            };
+        }
+
+        public bool TryBuildMapRewardPreview(string mapItemId, out PreparedMissionRewardProfile rewardProfile, out string error)
+        {
+            rewardProfile = new PreparedMissionRewardProfile();
+            error = string.Empty;
+
             var mapItem = FindMapItem(mapItemId);
             if (mapItem == null)
             {
@@ -471,25 +558,56 @@ namespace AutoBattler
                 return false;
             }
 
-            if (!lootCatalogs.TryGetCurrencyItemDefinition(currencyItemDefinitionId, out var currencyDefinition) || currencyDefinition == null)
+            return TryBuildMapRewardPreview(mapItem, mapDefinition, mapItem.appliedMapModifiers, out rewardProfile, out error);
+        }
+
+        public bool TryGetMapModifierThreatContribution(string mapItemId, int modifierIndex, out float threatContribution, out string error)
+        {
+            threatContribution = 0f;
+            error = string.Empty;
+
+            var mapItem = FindMapItem(mapItemId);
+            if (mapItem == null)
             {
-                error = "The selected currency definition was not found.";
+                error = "Unable to find the selected map.";
                 return false;
             }
 
-            if (currencyDefinition.targetTypes != null
-                && currencyDefinition.targetTypes.Count > 0
-                && !ContainsIgnoreCase(currencyDefinition.targetTypes, "Map"))
+            if (catalogs == null || !catalogs.TryGetMapDefinition(mapItem.mapDefinitionId, out var mapDefinition) || mapDefinition == null)
             {
-                error = "That currency cannot be used on maps.";
+                error = "The selected map definition was not found.";
                 return false;
             }
 
-            return currencyDefinition.actionType switch
+            if (mapItem.appliedMapModifiers == null || modifierIndex < 0 || modifierIndex >= mapItem.appliedMapModifiers.Count)
             {
-                CurrencyActionType.AddModifiers => TryApplyAddModifiersCurrencyToMap(mapItem, mapDefinition, currencyDefinition, out error),
-                _ => UnsupportedCurrencyAction(currencyDefinition, out error)
-            };
+                error = "The selected map modifier was not found.";
+                return false;
+            }
+
+            if (!TryBuildMapRewardPreview(mapItem, mapDefinition, mapItem.appliedMapModifiers, out var fullPreview, out error))
+            {
+                return false;
+            }
+
+            var reducedModifiers = new List<AppliedMapModifierData>();
+            for (var i = 0; i < mapItem.appliedMapModifiers.Count; i++)
+            {
+                if (i == modifierIndex || mapItem.appliedMapModifiers[i] == null)
+                {
+                    continue;
+                }
+
+                reducedModifiers.Add(mapItem.appliedMapModifiers[i]);
+            }
+
+            if (!TryBuildMapRewardPreview(mapItem, mapDefinition, reducedModifiers, out var reducedPreview, out error))
+            {
+                return false;
+            }
+
+            threatContribution = Mathf.Max(0f, fullPreview.modifiedThreat - reducedPreview.modifiedThreat);
+            return true;
         }
 
         private bool TryApplyAddModifiersCurrency(OwnedUnitItem item, ItemDefinition definition, CurrencyItemDefinition currencyDefinition, out string error)
@@ -557,33 +675,13 @@ namespace AutoBattler
 
         private bool TryApplyAddModifiersCurrencyToMap(OwnedMapItem mapItem, MapDefinition mapDefinition, CurrencyItemDefinition currencyDefinition, out string error)
         {
-            error = string.Empty;
-            if (mapItem == null || mapDefinition == null || currencyDefinition == null || catalogs == null)
+            if (!CanApplyAddModifiersCurrencyToMap(mapItem, mapDefinition, currencyDefinition, out error))
             {
-                error = "Unable to apply that currency to the selected map.";
-                return false;
-            }
-
-            mapItem.appliedMapModifiers ??= new List<AppliedMapModifierData>();
-            var existingCount = mapItem.appliedMapModifiers.Count;
-            if (existingCount < currencyDefinition.minExistingModifiers || existingCount > currencyDefinition.maxExistingModifiers)
-            {
-                error = "That currency cannot be used on a map with the current number of modifiers.";
-                return false;
-            }
-
-            if (existingCount >= currencyDefinition.maxModifiersPerItem)
-            {
-                error = "That map cannot hold more modifiers.";
                 return false;
             }
 
             var candidates = BuildMapModifierTemplatePool(mapItem, mapDefinition);
-            if (candidates.Count == 0)
-            {
-                error = "No valid map modifier templates matched that map.";
-                return false;
-            }
+            var existingCount = mapItem.appliedMapModifiers != null ? mapItem.appliedMapModifiers.Count : 0;
 
             if (!TrySpendCurrency(currencyDefinition.currencyItemDefinitionId, 1))
             {
@@ -615,6 +713,87 @@ namespace AutoBattler
             }
 
             Save();
+            return true;
+        }
+
+        private bool TryResolveMapModificationContext(
+            string mapItemId,
+            string currencyItemDefinitionId,
+            out OwnedMapItem mapItem,
+            out MapDefinition mapDefinition,
+            out CurrencyItemDefinition currencyDefinition,
+            out string error)
+        {
+            error = string.Empty;
+            mapItem = FindMapItem(mapItemId);
+            mapDefinition = null;
+            currencyDefinition = null;
+
+            if (mapItem == null)
+            {
+                error = "Unable to find the selected map.";
+                return false;
+            }
+
+            if (catalogs == null || !catalogs.TryGetMapDefinition(mapItem.mapDefinitionId, out mapDefinition) || mapDefinition == null)
+            {
+                error = "The selected map definition was not found.";
+                return false;
+            }
+
+            if (lootCatalogs == null || !lootCatalogs.TryGetCurrencyItemDefinition(currencyItemDefinitionId, out currencyDefinition) || currencyDefinition == null)
+            {
+                error = "The selected currency definition was not found.";
+                return false;
+            }
+
+            if (currencyDefinition.targetTypes != null
+                && currencyDefinition.targetTypes.Count > 0
+                && !ContainsIgnoreCase(currencyDefinition.targetTypes, "Map"))
+            {
+                error = "That currency cannot be used on maps.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool CanApplyAddModifiersCurrencyToMap(OwnedMapItem mapItem, MapDefinition mapDefinition, CurrencyItemDefinition currencyDefinition, out string error)
+        {
+            error = string.Empty;
+            if (mapItem == null || mapDefinition == null || currencyDefinition == null || catalogs == null)
+            {
+                error = "Unable to apply that currency to the selected map.";
+                return false;
+            }
+
+            mapItem.appliedMapModifiers ??= new List<AppliedMapModifierData>();
+            var existingCount = mapItem.appliedMapModifiers.Count;
+            if (existingCount < currencyDefinition.minExistingModifiers || existingCount > currencyDefinition.maxExistingModifiers)
+            {
+                error = "That currency cannot be used on a map with the current number of modifiers.";
+                return false;
+            }
+
+            if (existingCount >= currencyDefinition.maxModifiersPerItem)
+            {
+                error = "That map cannot hold more modifiers.";
+                return false;
+            }
+
+            var candidates = BuildMapModifierTemplatePool(mapItem, mapDefinition);
+            if (candidates.Count == 0)
+            {
+                error = "No valid map modifier templates matched that map.";
+                return false;
+            }
+
+            if (GetCurrencyAmount(currencyDefinition.currencyItemDefinitionId) <= 0)
+            {
+                error = "Not enough " + currencyDefinition.currencyItemDefinitionId + ".";
+                return false;
+            }
+
             return true;
         }
 
@@ -682,10 +861,12 @@ namespace AutoBattler
             }
 
             config.redTeam ??= new TeamConfig { units = Array.Empty<UnitSpawnConfig>() };
-            var baseThreat = CalculateTeamThreat(config.redTeam.units);
-            ApplyMapModifiersToMission(config);
-            var modifiedThreat = CalculateTeamThreat(config.redTeam.units);
+            var mapItem = FindMapItem(activeMission.mapItemId);
+            var baseThreat = CalculateTeamThreat(config.redTeam.units, null);
+            ApplyMapModifiersToConfig(config, mapItem, activeMission.mapDefinitionId);
+            var modifiedThreat = CalculateTeamThreat(config.redTeam.units, mapItem);
             activeMission.rewardProfile = BuildRewardProfile(baseThreat, modifiedThreat);
+            LogMissionPreparationSummary(config, mapItem);
 
             var extraBlueUnits = BuildMissionBlueUnitCards(activeMission.selectedUnitCardIds);
             if (extraBlueUnits.Count == 0)
@@ -845,9 +1026,8 @@ namespace AutoBattler
             cameraObject.AddComponent<AudioListener>();
         }
 
-        private void ApplyMapModifiersToMission(SceneBattleConfig config)
+        private void ApplyMapModifiersToConfig(SceneBattleConfig config, OwnedMapItem mapItem, string debugLabel)
         {
-            var mapItem = activeMission == null ? null : FindMapItem(activeMission.mapItemId);
             if (config?.redTeam == null || mapItem?.appliedMapModifiers == null || mapItem.appliedMapModifiers.Count == 0)
             {
                 return;
@@ -872,7 +1052,10 @@ namespace AutoBattler
             enemyUnits.RemoveAll(unit => unit == null || unit.count <= 0 || unit.definition == null);
             config.redTeam.units = enemyUnits.ToArray();
 
-            Debug.Log("Applied map modifiers to " + activeMission.mapDefinitionId + ": " + string.Join(", ", BuildMapModifierDebugLabels(mapItem.appliedMapModifiers)));
+            if (!string.IsNullOrWhiteSpace(debugLabel))
+            {
+                Debug.Log("Applied map modifiers to " + debugLabel + ": " + string.Join(", ", BuildMapModifierDebugLabels(mapItem.appliedMapModifiers)));
+            }
         }
 
         private void ApplyMapModifierEffects(List<UnitSpawnConfig> units, AppliedMapModifierData modifier, params MapModifierEffectType[] supportedEffectTypes)
@@ -1287,7 +1470,7 @@ namespace AutoBattler
             return clone;
         }
 
-        private float CalculateTeamThreat(UnitSpawnConfig[] units)
+        private float CalculateTeamThreat(UnitSpawnConfig[] units, OwnedMapItem mapItem)
         {
             if (units == null || units.Length == 0)
             {
@@ -1307,13 +1490,12 @@ namespace AutoBattler
                 totalThreat += CalculateUnitThreat(unit, gameCatalog);
             }
 
-            totalThreat += CalculateMapModifierThreatOverride();
+            totalThreat += CalculateMapModifierThreatOverride(mapItem);
             return Mathf.Max(0f, totalThreat);
         }
 
-        private float CalculateMapModifierThreatOverride()
+        private float CalculateMapModifierThreatOverride(OwnedMapItem mapItem)
         {
-            var mapItem = activeMission == null ? null : FindMapItem(activeMission.mapItemId);
             if (mapItem?.appliedMapModifiers == null)
             {
                 return 0f;
@@ -1330,6 +1512,46 @@ namespace AutoBattler
             }
 
             return totalOverride;
+        }
+
+        private bool TryBuildMapRewardPreview(
+            OwnedMapItem mapItem,
+            MapDefinition mapDefinition,
+            List<AppliedMapModifierData> appliedModifiers,
+            out PreparedMissionRewardProfile rewardProfile,
+            out string error)
+        {
+            rewardProfile = new PreparedMissionRewardProfile();
+            error = string.Empty;
+
+            if (mapItem == null || mapDefinition == null)
+            {
+                error = "Unable to build a preview for the selected map.";
+                return false;
+            }
+
+            var config = SceneBattleConfigLoader.Load(mapDefinition.sceneName);
+            config?.EnsureDefaults();
+            if (config == null)
+            {
+                error = "The selected map scene config could not be loaded.";
+                return false;
+            }
+
+            config.redTeam ??= new TeamConfig { units = Array.Empty<UnitSpawnConfig>() };
+            var baseThreat = CalculateTeamThreat(config.redTeam.units, null);
+            var previewMapItem = new OwnedMapItem
+            {
+                mapItemId = mapItem.mapItemId,
+                mapDefinitionId = mapItem.mapDefinitionId,
+                instanceName = mapItem.instanceName,
+                appliedMapModifiers = appliedModifiers ?? new List<AppliedMapModifierData>()
+            };
+
+            ApplyMapModifiersToConfig(config, previewMapItem, null);
+            var modifiedThreat = CalculateTeamThreat(config.redTeam.units, previewMapItem);
+            rewardProfile = BuildRewardProfile(baseThreat, modifiedThreat);
+            return true;
         }
 
         private static float CalculateUnitThreat(UnitSpawnConfig unit, GameDataCatalog gameCatalog)
@@ -2093,6 +2315,11 @@ namespace AutoBattler
 
         private void EnsureSaveDefaults(CampaignSaveData data)
         {
+            if (data == null)
+            {
+                return;
+            }
+
             data.currencyItemStacks ??= new List<CurrencyItemStack>();
             data.ownedMapItems ??= new List<OwnedMapItem>();
             data.ownedUnitCards ??= new List<OwnedUnitCard>();
@@ -2103,6 +2330,27 @@ namespace AutoBattler
                 if (data.ownedUnitCards[i] != null)
                 {
                     data.ownedUnitCards[i].equippedItemIds ??= new List<string>();
+                }
+            }
+            for (var i = 0; i < data.ownedMapItems.Count; i++)
+            {
+                var map = data.ownedMapItems[i];
+                if (map == null)
+                {
+                    continue;
+                }
+
+                map.appliedMapModifiers ??= new List<AppliedMapModifierData>();
+                for (var modifierIndex = 0; modifierIndex < map.appliedMapModifiers.Count; modifierIndex++)
+                {
+                    var appliedModifier = map.appliedMapModifiers[modifierIndex];
+                    if (appliedModifier == null)
+                    {
+                        continue;
+                    }
+
+                    appliedModifier.selectors ??= new MapModifierSelectorDefinition();
+                    appliedModifier.effects ??= new List<AppliedMapModifierEffectData>();
                 }
             }
             for (var i = 0; i < data.ownedUnitItems.Count; i++)
@@ -2129,6 +2377,335 @@ namespace AutoBattler
                     });
                 }
             }
+
+            for (var i = 0; i < data.hexBoardState.Count; i++)
+            {
+                if (data.hexBoardState[i] != null)
+                {
+                    data.hexBoardState[i].selectedUnitCardIds ??= new List<string>();
+                }
+            }
+
+            NormalizeBattleResultLists(data.lastResolvedBattleResult);
+        }
+
+        private static void NormalizeBattleResultLists(BattleResultData result)
+        {
+            if (result == null)
+            {
+                return;
+            }
+
+            result.deadUnitCardIds ??= new List<string>();
+            result.survivingUnitCardIds ??= new List<string>();
+            result.awardedUnitCards ??= new List<AwardedUnitCardData>();
+            result.claimedLoot ??= new List<DroppedLootEntry>();
+            result.lostLoot ??= new List<DroppedLootEntry>();
+        }
+
+        private bool CanApplyAddModifiersCurrency(OwnedUnitItem item, ItemDefinition definition, CurrencyItemDefinition currencyDefinition, out string error)
+        {
+            error = string.Empty;
+            if (item == null || definition == null || currencyDefinition == null || lootCatalogs == null)
+            {
+                error = "Unable to apply that currency to the selected item.";
+                return false;
+            }
+
+            item.appliedModifiers ??= new List<AppliedItemModifierData>();
+            var existingCount = item.appliedModifiers.Count;
+            if (existingCount < currencyDefinition.minExistingModifiers || existingCount > currencyDefinition.maxExistingModifiers)
+            {
+                error = "That currency cannot be used on an item with the current number of modifiers.";
+                return false;
+            }
+
+            if (existingCount >= currencyDefinition.maxModifiersPerItem)
+            {
+                error = "That item cannot hold more modifiers.";
+                return false;
+            }
+
+            var candidates = BuildModifierTemplatePool(item, definition);
+            if (candidates.Count == 0)
+            {
+                error = "No compatible modifiers are available for that item.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private void ValidateCatalogsAndSave()
+        {
+            ValidateCampaignCatalogs();
+            ValidateLootCatalogs();
+            ValidateSaveReferences(saveData);
+        }
+
+        private void ValidateCampaignCatalogs()
+        {
+            if (catalogs == null)
+            {
+                Debug.LogWarning("Campaign catalogs failed to load.");
+                return;
+            }
+
+            foreach (var pair in catalogs.MapDefinitions)
+            {
+                var definition = pair.Value;
+                if (definition == null)
+                {
+                    Debug.LogWarning("Campaign map definition '" + pair.Key + "' is null.");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(definition.sceneName))
+                {
+                    Debug.LogWarning("Campaign map '" + pair.Key + "' has no scene name.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(definition.baseLootTableId)
+                    && (lootCatalogs == null || !lootCatalogs.TryGetLootTable(definition.baseLootTableId, out _)))
+                {
+                    Debug.LogWarning("Campaign map '" + pair.Key + "' references unknown base loot table '" + definition.baseLootTableId + "'.");
+                }
+            }
+
+            foreach (var pair in catalogs.MapModifierTemplates)
+            {
+                var template = pair.Value;
+                if (template == null)
+                {
+                    Debug.LogWarning("Map modifier template '" + pair.Key + "' is null.");
+                    continue;
+                }
+
+                if (template.effects == null || template.effects.Count == 0)
+                {
+                    Debug.LogWarning("Map modifier template '" + pair.Key + "' has no effects.");
+                }
+            }
+        }
+
+        private void ValidateLootCatalogs()
+        {
+            if (lootCatalogs == null)
+            {
+                Debug.LogWarning("Loot catalogs failed to load.");
+                return;
+            }
+
+            foreach (var pair in lootCatalogs.CurrencyItemDefinitions)
+            {
+                var definition = pair.Value;
+                if (definition == null)
+                {
+                    Debug.LogWarning("Currency definition '" + pair.Key + "' is null.");
+                    continue;
+                }
+
+                if (definition.actionType == CurrencyActionType.None)
+                {
+                    Debug.LogWarning("Currency definition '" + pair.Key + "' has no action type.");
+                }
+            }
+
+            foreach (var pair in lootCatalogs.ModifierTemplates)
+            {
+                var template = pair.Value;
+                if (template == null)
+                {
+                    Debug.LogWarning("Item modifier template '" + pair.Key + "' is null.");
+                    continue;
+                }
+
+                if (template.itemTypes == null || template.itemTypes.Count == 0)
+                {
+                    Debug.LogWarning("Item modifier template '" + pair.Key + "' has no item types.");
+                }
+
+                if (template.rollAMax < template.rollAMin || template.rollBMax < template.rollBMin)
+                {
+                    Debug.LogWarning("Item modifier template '" + pair.Key + "' has an invalid roll range.");
+                }
+            }
+
+            foreach (var pair in lootCatalogs.LootTables)
+            {
+                var table = pair.Value;
+                if (table == null)
+                {
+                    Debug.LogWarning("Loot table '" + pair.Key + "' is null.");
+                    continue;
+                }
+
+                if (table.entries == null || table.entries.Count == 0)
+                {
+                    Debug.LogWarning("Loot table '" + pair.Key + "' has no entries.");
+                    continue;
+                }
+
+                for (var i = 0; i < table.entries.Count; i++)
+                {
+                    var entry = table.entries[i];
+                    if (entry == null)
+                    {
+                        continue;
+                    }
+
+                    switch (entry.rewardType)
+                    {
+                        case LootRewardType.MapItem:
+                            if (!string.IsNullOrWhiteSpace(entry.mapDefinitionId) && !catalogs.TryGetMapDefinition(entry.mapDefinitionId, out _))
+                            {
+                                Debug.LogWarning("Loot table '" + pair.Key + "' entry '" + entry.entryId + "' references unknown map '" + entry.mapDefinitionId + "'.");
+                            }
+                            break;
+                        case LootRewardType.UnitItem:
+                            if (!string.IsNullOrWhiteSpace(entry.itemDefinitionId) && !lootCatalogs.TryGetItemDefinition(entry.itemDefinitionId, out _))
+                            {
+                                Debug.LogWarning("Loot table '" + pair.Key + "' entry '" + entry.entryId + "' references unknown item '" + entry.itemDefinitionId + "'.");
+                            }
+                            break;
+                        case LootRewardType.CurrencyItem:
+                            if (!string.IsNullOrWhiteSpace(entry.currencyItemDefinitionId) && !lootCatalogs.TryGetCurrencyItemDefinition(entry.currencyItemDefinitionId, out _))
+                            {
+                                Debug.LogWarning("Loot table '" + pair.Key + "' entry '" + entry.entryId + "' references unknown currency '" + entry.currencyItemDefinitionId + "'.");
+                            }
+                            break;
+                    }
+                }
+            }
+        }
+
+        private void ValidateSaveReferences(CampaignSaveData data)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < data.ownedMapItems.Count; i++)
+            {
+                var map = data.ownedMapItems[i];
+                if (map == null)
+                {
+                    continue;
+                }
+
+                if (!catalogs.TryGetMapDefinition(map.mapDefinitionId, out _))
+                {
+                    Debug.LogWarning("Save references unknown map definition '" + map.mapDefinitionId + "' on map item '" + map.mapItemId + "'.");
+                }
+
+                if (map.appliedMapModifiers == null)
+                {
+                    continue;
+                }
+
+                for (var modifierIndex = 0; modifierIndex < map.appliedMapModifiers.Count; modifierIndex++)
+                {
+                    var modifier = map.appliedMapModifiers[modifierIndex];
+                    if (modifier == null || string.IsNullOrWhiteSpace(modifier.mapModifierTemplateId))
+                    {
+                        continue;
+                    }
+
+                    if (!catalogs.TryGetMapModifierTemplate(modifier.mapModifierTemplateId, out _))
+                    {
+                        Debug.LogWarning("Save map item '" + map.mapItemId + "' references unknown map modifier template '" + modifier.mapModifierTemplateId + "'.");
+                    }
+                }
+            }
+
+            for (var i = 0; i < data.ownedUnitCards.Count; i++)
+            {
+                var card = data.ownedUnitCards[i];
+                if (card == null)
+                {
+                    continue;
+                }
+
+                if (!catalogs.TryGetUnitCardDefinition(card.definitionId, out _))
+                {
+                    Debug.LogWarning("Save unit card '" + card.unitCardId + "' references unknown card definition '" + card.definitionId + "'.");
+                }
+            }
+
+            for (var i = 0; i < data.ownedUnitItems.Count; i++)
+            {
+                var item = data.ownedUnitItems[i];
+                if (item == null)
+                {
+                    continue;
+                }
+
+                if (!lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out _))
+                {
+                    Debug.LogWarning("Save unit item '" + item.itemInstanceId + "' references unknown item definition '" + item.itemDefinitionId + "'.");
+                }
+
+                if (item.appliedModifiers == null)
+                {
+                    continue;
+                }
+
+                for (var modifierIndex = 0; modifierIndex < item.appliedModifiers.Count; modifierIndex++)
+                {
+                    var modifier = item.appliedModifiers[modifierIndex];
+                    if (modifier == null || string.IsNullOrWhiteSpace(modifier.modifierTemplateId))
+                    {
+                        continue;
+                    }
+
+                    if (!lootCatalogs.TryGetModifierTemplate(modifier.modifierTemplateId, out _))
+                    {
+                        Debug.LogWarning("Save unit item '" + item.itemInstanceId + "' references unknown item modifier template '" + modifier.modifierTemplateId + "'.");
+                    }
+                }
+            }
+
+            for (var i = 0; i < data.currencyItemStacks.Count; i++)
+            {
+                var stack = data.currencyItemStacks[i];
+                if (stack == null || string.IsNullOrWhiteSpace(stack.currencyItemDefinitionId))
+                {
+                    continue;
+                }
+
+                if (!lootCatalogs.TryGetCurrencyItemDefinition(stack.currencyItemDefinitionId, out _))
+                {
+                    Debug.LogWarning("Save references unknown currency item '" + stack.currencyItemDefinitionId + "'.");
+                }
+            }
+        }
+
+        private void LogCatalogSummary()
+        {
+            Debug.Log("Campaign catalogs ready. Maps: " + (catalogs?.MapDefinitions.Count ?? 0)
+                + "  CardDefs: " + (catalogs?.UnitCardDefinitions.Count ?? 0)
+                + "  MapModifiers: " + (catalogs?.MapModifierTemplates.Count ?? 0)
+                + "  LootTables: " + (lootCatalogs?.LootTables.Count ?? 0)
+                + "  Currencies: " + (lootCatalogs?.CurrencyItemDefinitions.Count ?? 0)
+                + "  ItemModifiers: " + (lootCatalogs?.ModifierTemplates.Count ?? 0));
+        }
+
+        private void LogMissionPreparationSummary(SceneBattleConfig config, OwnedMapItem mapItem)
+        {
+            if (activeMission == null)
+            {
+                return;
+            }
+
+            var modifiers = BuildMapModifierDebugLabels(mapItem?.appliedMapModifiers);
+            Debug.Log("Prepared mission '" + activeMission.sceneName
+                + "'  BaseThreat: " + activeMission.rewardProfile.baseThreat.ToString("0.0")
+                + "  ModifiedThreat: " + activeMission.rewardProfile.modifiedThreat.ToString("0.0")
+                + "  Reward x" + activeMission.rewardProfile.rewardMultiplier.ToString("0.00")
+                + "  BlueUnits: " + ((config?.blueTeam?.units?.Length) ?? 0)
+                + "  RedUnits: " + ((config?.redTeam?.units?.Length) ?? 0)
+                + "  MapModifiers: " + (modifiers.Length == 0 ? "none" : string.Join(", ", modifiers)));
         }
 
         public void Save()

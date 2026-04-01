@@ -11,6 +11,7 @@ namespace AutoBattler
         private GUIStyle splashMessageStyle;
         private GUIStyle splashPanelStyle;
         private GUIStyle splashButtonStyle;
+        private Vector2 lootScrollPosition;
 
         private void OnGUI()
         {
@@ -21,7 +22,7 @@ namespace AutoBattler
 
             EnsureStyles();
 
-            GUILayout.BeginArea(new Rect(16f, 16f, 300f, 150f), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(16f, 16f, 380f, 240f), GUI.skin.box);
             GUILayout.Label("AutoBattler", headerStyle);
 
             if (ScoreManager.Instance == null)
@@ -42,13 +43,26 @@ namespace AutoBattler
             if (BattleScenario.Instance != null)
             {
                 var missionSummary = "Mission: " + BattleScenario.Instance.MissionName;
-                var objectiveSummary = "Objective: " + BattleScenario.Instance.GetObjectiveSummary();
+                var descriptionSummary = string.IsNullOrWhiteSpace(BattleScenario.Instance.MissionDescription)
+                    ? string.Empty
+                    : "Briefing: " + BattleScenario.Instance.MissionDescription;
+                var objectiveSummary = "Primary: " + BattleScenario.Instance.GetPrimaryObjectiveSummary();
+                var loseSummary = "Failure: " + BattleScenario.Instance.GetLoseConditionSummary();
+                var tagSummary = "Scenario: " + BattleScenario.Instance.GetScenarioTagSummary();
+                var spawnerSummary = "Spawners: " + (BattleScenario.Instance.HasSpawnerPresence() ? "Present" : "None detected");
                 GUILayout.Label(missionSummary, bodyStyle);
+                if (!string.IsNullOrWhiteSpace(descriptionSummary))
+                {
+                    GUILayout.Label(descriptionSummary, bodyStyle);
+                }
                 GUILayout.Label(objectiveSummary, bodyStyle);
+                GUILayout.Label(loseSummary, bodyStyle);
+                GUILayout.Label(tagSummary, bodyStyle);
+                GUILayout.Label(spawnerSummary, bodyStyle);
                 var progressSummary = BattleScenario.Instance.GetProgressSummary();
                 if (!string.IsNullOrWhiteSpace(progressSummary))
                 {
-                    GUILayout.Label(progressSummary, bodyStyle);
+                    GUILayout.Label("Progress: " + progressSummary, bodyStyle);
                 }
             }
             else if (BattleObjectiveManager.Instance != null)
@@ -209,6 +223,8 @@ namespace AutoBattler
             GUILayout.Space(6f);
             GUILayout.Label(perspectiveText, splashMessageStyle);
             GUILayout.Space(12f);
+            GUILayout.Label("Ended Because:", splashMessageStyle);
+            GUILayout.Space(4f);
             GUILayout.Label(battleState.ResultMessage, splashMessageStyle);
             GUILayout.Space(10f);
             GUILayout.Label("Left-click units to inspect final stats.", bodyStyle);
@@ -237,7 +253,7 @@ namespace AutoBattler
             }
 
             var entries = BattleLootManager.Instance.GetRecentDropDisplayEntries();
-            GUILayout.BeginArea(new Rect(16f, 190f, 320f, 360f), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(16f, 266f, 320f, 210f), GUI.skin.box);
             GUILayout.Label("Loot Dropped", headerStyle);
             if (entries == null || entries.Count == 0)
             {
@@ -246,10 +262,12 @@ namespace AutoBattler
                 return;
             }
 
+            lootScrollPosition = GUILayout.BeginScrollView(lootScrollPosition, false, true);
             for (var i = 0; i < entries.Count; i++)
             {
                 GUILayout.Label(entries[i], bodyStyle);
             }
+            GUILayout.EndScrollView();
 
             GUILayout.EndArea();
         }

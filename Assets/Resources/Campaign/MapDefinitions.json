@@ -5,6 +5,12 @@
       "displayName": "Sample Operation",
       "sceneName": "SampleScene",
       "description": "Secure the battlefield and hold the line long enough to get your troops home.",
+      "missionName": "Sample Operation",
+      "missionDescription": "Take the field, secure the objective, and keep your surviving troops in fighting shape for extraction.",
+      "primaryObjective": "Capture all required victory points or eliminate all enemy forces.",
+      "loseCondition": "Do not lose all deployed player units.",
+      "scenarioTags": ["Assault", "Spawner Threat"],
+      "hasSpawners": true,
       "tier": 1,
       "baseLootTableId": "sample_operation_victory"
     }

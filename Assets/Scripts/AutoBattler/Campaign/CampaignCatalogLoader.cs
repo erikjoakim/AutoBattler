@@ -86,6 +86,12 @@ namespace AutoBattler
                     displayName = JsonDataHelper.GetString(item, "displayName", mapDefinitionId),
                     sceneName = sceneName,
                     description = JsonDataHelper.GetString(item, "description", string.Empty),
+                    missionName = JsonDataHelper.GetString(item, "missionName", JsonDataHelper.GetString(item, "displayName", mapDefinitionId)),
+                    missionDescription = JsonDataHelper.GetString(item, "missionDescription", JsonDataHelper.GetString(item, "description", string.Empty)),
+                    primaryObjective = JsonDataHelper.GetString(item, "primaryObjective", string.Empty),
+                    loseCondition = JsonDataHelper.GetString(item, "loseCondition", string.Empty),
+                    scenarioTags = GetStringList(item, "scenarioTags"),
+                    hasSpawners = GetBool(item, "hasSpawners", false),
                     tier = Mathf.Max(1, JsonDataHelper.GetInt(item, "tier", 1)),
                     baseLootTableId = JsonDataHelper.GetString(item, "baseLootTableId", string.Empty)
                 };
@@ -128,6 +134,12 @@ namespace AutoBattler
                     displayName = "Sample Operation",
                     sceneName = "SampleScene",
                     description = "Secure the objective and keep the roster alive.",
+                    missionName = "Sample Operation",
+                    missionDescription = "Secure the battlefield and hold the line long enough to get your troops home.",
+                    primaryObjective = "Capture all required victory points or eliminate all enemy forces.",
+                    loseCondition = "Do not lose all deployed player units.",
+                    scenarioTags = new List<string> { "Assault", "Spawner Threat" },
+                    hasSpawners = true,
                     tier = 1,
                     baseLootTableId = "sample_operation_victory"
                 }
