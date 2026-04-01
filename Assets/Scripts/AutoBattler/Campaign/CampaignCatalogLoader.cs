@@ -10,18 +10,21 @@ namespace AutoBattler
             Dictionary<string, MapDefinition> mapDefinitions,
             Dictionary<string, UnitCardDefinition> unitCardDefinitions,
             StartingLoadoutDefinition startingLoadout,
-            Dictionary<string, MapModifierTemplateDefinition> mapModifierTemplates)
+            Dictionary<string, MapModifierTemplateDefinition> mapModifierTemplates,
+            MissionInstructionDefinitionCatalog missionInstructions)
         {
             MapDefinitions = mapDefinitions ?? new Dictionary<string, MapDefinition>(StringComparer.OrdinalIgnoreCase);
             UnitCardDefinitions = unitCardDefinitions ?? new Dictionary<string, UnitCardDefinition>(StringComparer.OrdinalIgnoreCase);
             StartingLoadout = startingLoadout ?? new StartingLoadoutDefinition();
             MapModifierTemplates = mapModifierTemplates ?? new Dictionary<string, MapModifierTemplateDefinition>(StringComparer.OrdinalIgnoreCase);
+            MissionInstructions = missionInstructions ?? new MissionInstructionDefinitionCatalog();
         }
 
         public Dictionary<string, MapDefinition> MapDefinitions { get; }
         public Dictionary<string, UnitCardDefinition> UnitCardDefinitions { get; }
         public StartingLoadoutDefinition StartingLoadout { get; }
         public Dictionary<string, MapModifierTemplateDefinition> MapModifierTemplates { get; }
+        public MissionInstructionDefinitionCatalog MissionInstructions { get; }
 
         public bool TryGetMapDefinition(string mapDefinitionId, out MapDefinition definition)
         {
@@ -44,6 +47,7 @@ namespace AutoBattler
         private const string MapDefinitionsPath = "Campaign/MapDefinitions";
         private const string StartingLoadoutPath = "Campaign/StartingLoadout";
         private const string MapModifierTemplatesPath = "Campaign/MapModifierTemplates";
+        private const string MissionDefinitionsPath = "Campaign/MissionDefinitions";
 
         public static CampaignCatalogs Load()
         {
@@ -51,7 +55,8 @@ namespace AutoBattler
             var unitCardDefinitions = BuildUnitCardDefinitionsFromGameUnits();
             var startingLoadout = LoadStartingLoadout();
             var mapModifierTemplates = LoadMapModifierTemplates();
-            return new CampaignCatalogs(mapDefinitions, unitCardDefinitions, startingLoadout, mapModifierTemplates);
+            var missionInstructions = LoadMissionInstructions();
+            return new CampaignCatalogs(mapDefinitions, unitCardDefinitions, startingLoadout, mapModifierTemplates, missionInstructions);
         }
 
         private static Dictionary<string, MapDefinition> LoadMapDefinitions()
@@ -450,6 +455,167 @@ namespace AutoBattler
             };
 
             return templates;
+        }
+
+        private static MissionInstructionDefinitionCatalog LoadMissionInstructions()
+        {
+            var asset = Resources.Load<TextAsset>(MissionDefinitionsPath);
+            if (asset == null)
+            {
+                return CreateDefaultMissionInstructions();
+            }
+
+            var root = JsonDataHelper.AsObject(MiniJson.Deserialize(asset.text));
+            if (root == null)
+            {
+                return CreateDefaultMissionInstructions();
+            }
+
+            var catalog = new MissionInstructionDefinitionCatalog();
+
+            var movementItems = JsonDataHelper.GetArray(root, "movementInstructions");
+            for (var i = 0; i < movementItems.Count; i++)
+            {
+                var item = JsonDataHelper.AsObject(movementItems[i]);
+                if (item == null)
+                {
+                    continue;
+                }
+
+                catalog.movementInstructions.Add(new MovementInstructionDefinition
+                {
+                    instructionType = JsonDataHelper.GetEnum(item, "instructionType", MovementInstructionType.UseUnitDefault),
+                    displayName = JsonDataHelper.GetString(item, "displayName", "Unit Default"),
+                    description = JsonDataHelper.GetString(item, "description", string.Empty),
+                    allowedUnitTypes = GetStringList(item, "allowedUnitTypes"),
+                    requiresAssignedTarget = GetBool(item, "requiresAssignedTarget", false),
+                    assignedTargetKind = JsonDataHelper.GetString(item, "assignedTargetKind", string.Empty)
+                });
+            }
+
+            var engagementItems = JsonDataHelper.GetArray(root, "engagementInstructions");
+            for (var i = 0; i < engagementItems.Count; i++)
+            {
+                var item = JsonDataHelper.AsObject(engagementItems[i]);
+                if (item == null)
+                {
+                    continue;
+                }
+
+                catalog.engagementInstructions.Add(new EngagementInstructionDefinition
+                {
+                    instructionType = JsonDataHelper.GetEnum(item, "instructionType", EngagementInstructionType.UseUnitDefault),
+                    displayName = JsonDataHelper.GetString(item, "displayName", "Unit Default"),
+                    description = JsonDataHelper.GetString(item, "description", string.Empty),
+                    allowedUnitTypes = GetStringList(item, "allowedUnitTypes")
+                });
+            }
+
+            var priorityItems = JsonDataHelper.GetArray(root, "priorityInstructions");
+            for (var i = 0; i < priorityItems.Count; i++)
+            {
+                var item = JsonDataHelper.AsObject(priorityItems[i]);
+                if (item == null)
+                {
+                    continue;
+                }
+
+                catalog.priorityInstructions.Add(new PriorityInstructionDefinition
+                {
+                    instructionType = JsonDataHelper.GetEnum(item, "instructionType", PriorityInstructionType.UseUnitDefault),
+                    displayName = JsonDataHelper.GetString(item, "displayName", "Unit Default"),
+                    description = JsonDataHelper.GetString(item, "description", string.Empty),
+                    allowedUnitTypes = GetStringList(item, "allowedUnitTypes")
+                });
+            }
+
+            if (catalog.movementInstructions.Count == 0
+                || catalog.engagementInstructions.Count == 0
+                || catalog.priorityInstructions.Count == 0)
+            {
+                return CreateDefaultMissionInstructions();
+            }
+
+            return catalog;
+        }
+
+        private static MissionInstructionDefinitionCatalog CreateDefaultMissionInstructions()
+        {
+            return new MissionInstructionDefinitionCatalog
+            {
+                movementInstructions = new List<MovementInstructionDefinition>
+                {
+                    new MovementInstructionDefinition
+                    {
+                        instructionType = MovementInstructionType.UseUnitDefault,
+                        displayName = "Unit Default",
+                        description = "Use the unit template's built-in mission."
+                    },
+                    new MovementInstructionDefinition
+                    {
+                        instructionType = MovementInstructionType.HoldPosition,
+                        displayName = "Hold Position",
+                        description = "Hold the current position and only react locally."
+                    },
+                    new MovementInstructionDefinition
+                    {
+                        instructionType = MovementInstructionType.SeekVictoryPoint,
+                        displayName = "Seek VictoryPoint",
+                        description = "Advance toward the current objective."
+                    },
+                    new MovementInstructionDefinition
+                    {
+                        instructionType = MovementInstructionType.FollowAssignedTank,
+                        displayName = "Follow Assigned Tank",
+                        description = "Follow a selected friendly tank.",
+                        allowedUnitTypes = new List<string> { "Infantry" },
+                        requiresAssignedTarget = true,
+                        assignedTargetKind = "FriendlyTank"
+                    }
+                },
+                engagementInstructions = new List<EngagementInstructionDefinition>
+                {
+                    new EngagementInstructionDefinition
+                    {
+                        instructionType = EngagementInstructionType.UseUnitDefault,
+                        displayName = "Unit Default",
+                        description = "Use the unit template's normal engagement behavior."
+                    },
+                    new EngagementInstructionDefinition
+                    {
+                        instructionType = EngagementInstructionType.AttackEnemies,
+                        displayName = "Attack Enemies",
+                        description = "Engage visible enemies when appropriate."
+                    },
+                    new EngagementInstructionDefinition
+                    {
+                        instructionType = EngagementInstructionType.AvoidEngagement,
+                        displayName = "Avoid Engagement",
+                        description = "Avoid initiating combat and only self-defend."
+                    }
+                },
+                priorityInstructions = new List<PriorityInstructionDefinition>
+                {
+                    new PriorityInstructionDefinition
+                    {
+                        instructionType = PriorityInstructionType.UseUnitDefault,
+                        displayName = "Unit Default",
+                        description = "Use normal target selection."
+                    },
+                    new PriorityInstructionDefinition
+                    {
+                        instructionType = PriorityInstructionType.PrioritizeInfantry,
+                        displayName = "Prioritize Infantry",
+                        description = "Prefer infantry targets when visible."
+                    },
+                    new PriorityInstructionDefinition
+                    {
+                        instructionType = PriorityInstructionType.PrioritizeTanks,
+                        displayName = "Prioritize Tanks",
+                        description = "Prefer tank targets when visible."
+                    }
+                }
+            };
         }
 
         private static List<string> GetStringList(Dictionary<string, object> source, string key)

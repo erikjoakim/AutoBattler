@@ -61,6 +61,64 @@ namespace AutoBattler
             return closest;
         }
 
+        public static BattleUnit GetClosestEnemy(BattleUnit source, float maxRange, UnitType preferredType)
+        {
+            var preferred = GetClosestEnemyMatching(source, maxRange, preferredType);
+            return preferred ?? GetClosestEnemy(source, maxRange);
+        }
+
+        public static BattleUnit GetAliveUnitByOwnedCardId(string ownedUnitCardId)
+        {
+            if (string.IsNullOrWhiteSpace(ownedUnitCardId))
+            {
+                return null;
+            }
+
+            for (var i = Units.Count - 1; i >= 0; i--)
+            {
+                var candidate = Units[i];
+                if (candidate == null)
+                {
+                    Units.RemoveAt(i);
+                    continue;
+                }
+
+                if (candidate.IsAlive
+                    && string.Equals(candidate.OwnedUnitCardId, ownedUnitCardId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        public static BattleUnit GetAliveUnitByDeploymentId(string deploymentUnitId)
+        {
+            if (string.IsNullOrWhiteSpace(deploymentUnitId))
+            {
+                return null;
+            }
+
+            for (var i = Units.Count - 1; i >= 0; i--)
+            {
+                var candidate = Units[i];
+                if (candidate == null)
+                {
+                    Units.RemoveAt(i);
+                    continue;
+                }
+
+                if (candidate.IsAlive
+                    && string.Equals(candidate.DeploymentUnitId, deploymentUnitId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
         public static int CountEnemiesInRadius(Team team, Vector3 center, float radius)
         {
             var count = 0;
@@ -219,6 +277,44 @@ namespace AutoBattler
             }
 
             return count;
+        }
+
+        private static BattleUnit GetClosestEnemyMatching(BattleUnit source, float maxRange, UnitType preferredType)
+        {
+            BattleUnit closest = null;
+            var closestDistanceSqr = maxRange * maxRange;
+
+            for (var i = Units.Count - 1; i >= 0; i--)
+            {
+                var candidate = Units[i];
+                if (candidate == null)
+                {
+                    Units.RemoveAt(i);
+                    continue;
+                }
+
+                if (candidate == source
+                    || !candidate.IsAlive
+                    || candidate.Team == source.Team
+                    || candidate.Definition == null
+                    || candidate.Definition.UnitType != preferredType)
+                {
+                    continue;
+                }
+
+                var delta = candidate.transform.position - source.transform.position;
+                delta.y = 0f;
+                var distanceSqr = delta.sqrMagnitude;
+                if (distanceSqr > closestDistanceSqr)
+                {
+                    continue;
+                }
+
+                closestDistanceSqr = distanceSqr;
+                closest = candidate;
+            }
+
+            return closest;
         }
     }
 }

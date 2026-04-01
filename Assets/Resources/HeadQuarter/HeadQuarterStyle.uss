@@ -449,6 +449,18 @@
     background-color: rgba(83, 66, 34, 0.94);
 }
 
+.unit-card-scene {
+    background-color: rgba(42, 77, 98, 0.94);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(132, 196, 227, 0.85);
+    border-right-color: rgba(132, 196, 227, 0.85);
+    border-bottom-color: rgba(132, 196, 227, 0.85);
+    border-left-color: rgba(132, 196, 227, 0.85);
+}
+
 .unit-card-valid-target {
     border-top-width: 2px;
     border-right-width: 2px;
@@ -478,6 +490,30 @@
     flex-direction: row;
     flex-wrap: wrap;
     margin-top: 8px;
+}
+
+.unit-card-mission-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.mission-action-button {
+    width: auto;
+    min-width: 138px;
+    margin-left: 0;
+    margin-right: 8px;
+    margin-bottom: 6px;
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 12px;
+}
+
+.mission-dropdown {
+    min-width: 172px;
+    margin-right: 8px;
+    margin-bottom: 6px;
 }
 
 .equipped-item-chip {
@@ -583,6 +619,14 @@
     font-size: 14px;
     color: rgb(184, 193, 188);
     margin-top: 8px;
+}
+
+.list-section-label {
+    margin-top: 6px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    -unity-font-style: bold;
+    color: rgb(201, 220, 229);
 }
 
 .dragged-map-ghost {

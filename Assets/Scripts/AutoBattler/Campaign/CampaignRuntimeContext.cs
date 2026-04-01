@@ -139,6 +139,26 @@ namespace AutoBattler
             return items;
         }
 
+        public IReadOnlyList<OwnedUnitItem> GetEquippedSceneUnitItems(string deploymentUnitId)
+        {
+            var items = new List<OwnedUnitItem>();
+            if (string.IsNullOrWhiteSpace(deploymentUnitId))
+            {
+                return items;
+            }
+
+            for (var i = 0; i < saveData.ownedUnitItems.Count; i++)
+            {
+                var item = saveData.ownedUnitItems[i];
+                if (item != null && string.Equals(item.equippedToSceneDeploymentUnitId, deploymentUnitId, StringComparison.OrdinalIgnoreCase))
+                {
+                    items.Add(item);
+                }
+            }
+
+            return items;
+        }
+
         public IReadOnlyList<OwnedUnitItem> GetCompatibleUnequippedUnitItems(string unitCardId)
         {
             var items = new List<OwnedUnitItem>();
@@ -151,7 +171,7 @@ namespace AutoBattler
             for (var i = 0; i < saveData.ownedUnitItems.Count; i++)
             {
                 var item = saveData.ownedUnitItems[i];
-                if (item == null || !string.IsNullOrWhiteSpace(item.equippedToUnitCardId))
+                if (item == null || !string.IsNullOrWhiteSpace(item.equippedToUnitCardId) || !string.IsNullOrWhiteSpace(item.equippedToSceneDeploymentUnitId))
                 {
                     continue;
                 }
@@ -199,6 +219,39 @@ namespace AutoBattler
             return cards;
         }
 
+        public IReadOnlyList<ScenePlayerDeploymentData> GetScenePlayerUnitsForSlot(string hexSlotId)
+        {
+            var slot = GetOrCreateSlotState(hexSlotId);
+            if (slot?.scenePlayerUnits == null)
+            {
+                return Array.Empty<ScenePlayerDeploymentData>();
+            }
+
+            return slot.scenePlayerUnits;
+        }
+
+        public AssignedUnitMissionData GetAssignedMissionData(string hexSlotId, string unitCardId)
+        {
+            var slot = GetOrCreateSlotState(hexSlotId);
+            if (slot?.selectedUnitMissions == null || string.IsNullOrWhiteSpace(unitCardId))
+            {
+                return null;
+            }
+
+            for (var i = 0; i < slot.selectedUnitMissions.Count; i++)
+            {
+                var missionData = slot.selectedUnitMissions[i];
+                if (missionData != null
+                    && string.Equals(missionData.unitCardId, unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    NormalizeAssignedMissionData(missionData);
+                    return missionData;
+                }
+            }
+
+            return null;
+        }
+
         public IReadOnlyList<OwnedUnitCard> GetAvailableUnitCards(string selectedHexSlotId)
         {
             var cards = new List<OwnedUnitCard>();
@@ -242,9 +295,17 @@ namespace AutoBattler
                 return false;
             }
 
+            if (!catalogs.TryGetMapDefinition(mapItem.mapDefinitionId, out var mapDefinition) || mapDefinition == null)
+            {
+                error = "The selected map definition was not found.";
+                return false;
+            }
+
             slot.state = CampaignHexState.Occupied;
             slot.occupiedMapItemId = mapItem.mapItemId;
             slot.selectedUnitCardIds.Clear();
+            slot.selectedUnitMissions.Clear();
+            slot.scenePlayerUnits = BuildScenePlayerDeployments(mapDefinition.sceneName);
             Save();
             return true;
         }
@@ -270,7 +331,10 @@ namespace AutoBattler
                 }
             }
 
+            ReleaseSceneUnitItems(slot.scenePlayerUnits);
             slot.selectedUnitCardIds.Clear();
+            slot.selectedUnitMissions.Clear();
+            slot.scenePlayerUnits.Clear();
             slot.occupiedMapItemId = string.Empty;
             slot.state = CampaignHexState.Open;
             Save();
@@ -325,6 +389,105 @@ namespace AutoBattler
             return true;
         }
 
+        public bool TrySetUnitCardMissionInstructions(
+            string hexSlotId,
+            string unitCardId,
+            MovementInstructionType movementInstruction,
+            EngagementInstructionType engagementInstruction,
+            PriorityInstructionType priorityInstruction,
+            string assignedTargetUnitCardId,
+            out string error)
+        {
+            error = string.Empty;
+            var slot = GetOrCreateSlotState(hexSlotId);
+            if (slot == null || slot.state != CampaignHexState.Occupied)
+            {
+                error = "Assign a mission only on an occupied hex.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(unitCardId) || !IsSelectedDeploymentUnit(slot, unitCardId))
+            {
+                error = "That unit is not selected for this map.";
+                return false;
+            }
+
+            slot.selectedUnitMissions ??= new List<AssignedUnitMissionData>();
+            RemoveMissionAssignment(slot, unitCardId);
+
+            if (movementInstruction == MovementInstructionType.FollowAssignedTank)
+            {
+                if (string.IsNullOrWhiteSpace(assignedTargetUnitCardId)
+                    || string.Equals(assignedTargetUnitCardId, unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "Select a different tank to escort.";
+                    return false;
+                }
+
+                if (!IsSelectedDeploymentUnit(slot, assignedTargetUnitCardId))
+                {
+                    error = "The escort target must also be selected for this map.";
+                    return false;
+                }
+
+                if (ResolveDeploymentUnitType(slot, assignedTargetUnitCardId) != UnitType.Tank)
+                {
+                    error = "Escort targets must be selected tanks.";
+                    return false;
+                }
+            }
+            else
+            {
+                assignedTargetUnitCardId = string.Empty;
+            }
+
+            if (movementInstruction == MovementInstructionType.UseUnitDefault
+                && engagementInstruction == EngagementInstructionType.UseUnitDefault
+                && priorityInstruction == PriorityInstructionType.UseUnitDefault
+                && string.IsNullOrWhiteSpace(assignedTargetUnitCardId))
+            {
+                Save();
+                return true;
+            }
+
+            slot.selectedUnitMissions.Add(new AssignedUnitMissionData
+            {
+                unitCardId = unitCardId,
+                movementInstruction = movementInstruction,
+                engagementInstruction = engagementInstruction,
+                priorityInstruction = priorityInstruction,
+                assignedTargetUnitCardId = assignedTargetUnitCardId ?? string.Empty
+            });
+
+            Save();
+            return true;
+        }
+
+        public bool TrySetUnitCardMissionAssignment(
+            string hexSlotId,
+            string unitCardId,
+            PlayerMissionAssignmentType assignment,
+            string escortTargetUnitCardId,
+            out string error)
+        {
+            ConvertLegacyAssignmentToInstructions(
+                assignment,
+                escortTargetUnitCardId,
+                out var movementInstruction,
+                out var engagementInstruction,
+                out var priorityInstruction,
+                out var assignedTargetUnitCardId);
+
+            return TrySetUnitCardMissionInstructions(
+                hexSlotId,
+                unitCardId,
+                movementInstruction,
+                engagementInstruction,
+                priorityInstruction,
+                assignedTargetUnitCardId,
+                out error);
+        }
+
         public bool TryUnassignUnitCardFromHex(string unitCardId, string hexSlotId, out string error)
         {
             error = string.Empty;
@@ -337,6 +500,8 @@ namespace AutoBattler
             }
 
             slot.selectedUnitCardIds.Remove(unitCardId);
+            RemoveMissionAssignment(slot, unitCardId);
+            RemoveEscortReferences(slot, unitCardId);
             if (card.status != UnitCardStatus.Dead)
             {
                 RefundDeploymentGold(card);
@@ -381,12 +546,47 @@ namespace AutoBattler
             return true;
         }
 
+        public bool TryEquipItemToSceneUnit(string itemInstanceId, string deploymentUnitId, out string error)
+        {
+            error = string.Empty;
+            var item = FindOwnedUnitItem(itemInstanceId);
+            var deployment = FindScenePlayerDeployment(deploymentUnitId);
+            if (item == null || deployment == null)
+            {
+                error = "Unable to find the selected item or scene unit.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.equippedToUnitCardId) || !string.IsNullOrWhiteSpace(item.equippedToSceneDeploymentUnitId))
+            {
+                error = "That item is already equipped.";
+                return false;
+            }
+
+            if (!CanEquipItemToSceneDeployment(item, deployment, out error))
+            {
+                return false;
+            }
+
+            item.equippedToSceneDeploymentUnitId = deployment.deploymentUnitId;
+            Save();
+            return true;
+        }
+
         public bool CanEquipItemToUnitCard(string itemInstanceId, string unitCardId, out string error)
         {
             error = string.Empty;
             var item = FindOwnedUnitItem(itemInstanceId);
             var card = FindUnitCard(unitCardId);
             return CanEquipItemToCard(item, card, out error);
+        }
+
+        public bool CanEquipItemToSceneUnit(string itemInstanceId, string deploymentUnitId, out string error)
+        {
+            error = string.Empty;
+            var item = FindOwnedUnitItem(itemInstanceId);
+            var deployment = FindScenePlayerDeployment(deploymentUnitId);
+            return CanEquipItemToSceneDeployment(item, deployment, out error);
         }
 
         public bool TryUnequipItemFromUnitCard(string itemInstanceId, string unitCardId, out string error)
@@ -408,6 +608,27 @@ namespace AutoBattler
 
             item.equippedToUnitCardId = string.Empty;
             card.equippedItemIds?.Remove(item.itemInstanceId);
+            Save();
+            return true;
+        }
+
+        public bool TryUnequipItemFromSceneUnit(string itemInstanceId, string deploymentUnitId, out string error)
+        {
+            error = string.Empty;
+            var item = FindOwnedUnitItem(itemInstanceId);
+            if (item == null)
+            {
+                error = "Unable to find the selected item.";
+                return false;
+            }
+
+            if (!string.Equals(item.equippedToSceneDeploymentUnitId, deploymentUnitId, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "That item is not equipped to the selected scene unit.";
+                return false;
+            }
+
+            item.equippedToSceneDeploymentUnitId = string.Empty;
             Save();
             return true;
         }
@@ -472,6 +693,28 @@ namespace AutoBattler
 
             ApplyEquippedItemEffects(ownedCard, unitSpawn);
             unitSpawn.ownedUnitCardId = ownedCard.unitCardId;
+            ApplyAssignedMission(unitSpawn, FindAssignedMissionForCard(ownedCard));
+            return true;
+        }
+
+        public bool TryBuildResolvedUnitSpawnForScenePlayerUnit(string deploymentUnitId, out UnitSpawnConfig unitSpawn)
+        {
+            unitSpawn = null;
+            var deployment = FindScenePlayerDeployment(deploymentUnitId);
+            if (deployment == null)
+            {
+                return false;
+            }
+
+            var catalog = GameDataCatalogLoader.Load();
+            unitSpawn = BuildUnitSpawnConfigFromSceneDeployment(catalog, deployment);
+            if (unitSpawn == null)
+            {
+                return false;
+            }
+
+            ApplyEquippedItemEffects(deployment, unitSpawn);
+            ApplyAssignedMission(unitSpawn, FindAssignedMissionForDeployment(deployment.deploymentUnitId));
             return true;
         }
 
@@ -844,7 +1087,9 @@ namespace AutoBattler
                 mapItemId = mapItem.mapItemId,
                 mapDefinitionId = mapDefinition.mapDefinitionId,
                 sceneName = mapDefinition.sceneName,
-                selectedUnitCardIds = new List<string>(slot.selectedUnitCardIds)
+                selectedUnitCardIds = new List<string>(slot.selectedUnitCardIds),
+                selectedUnitMissions = CloneAssignedMissionList(slot.selectedUnitMissions),
+                scenePlayerUnits = CloneScenePlayerDeployments(slot.scenePlayerUnits)
             };
 
             awaitingMissionSceneLoad = true;
@@ -868,21 +1113,25 @@ namespace AutoBattler
             activeMission.rewardProfile = BuildRewardProfile(baseThreat, modifiedThreat);
             LogMissionPreparationSummary(config, mapItem);
 
-            var extraBlueUnits = BuildMissionBlueUnitCards(activeMission.selectedUnitCardIds);
-            if (extraBlueUnits.Count == 0)
+            var sceneBlueUnits = BuildMissionScenePlayerUnits(activeMission.scenePlayerUnits, activeMission.selectedUnitMissions);
+            var extraBlueUnits = BuildMissionBlueUnitCards(activeMission.selectedUnitCardIds, activeMission.selectedUnitMissions);
+            if (sceneBlueUnits.Count == 0 && extraBlueUnits.Count == 0)
             {
                 return;
             }
 
-            config.blueTeam ??= new TeamConfig { units = Array.Empty<UnitSpawnConfig>() };
-            var existingUnits = config.blueTeam.units ?? Array.Empty<UnitSpawnConfig>();
-            var merged = new UnitSpawnConfig[existingUnits.Length + extraBlueUnits.Count];
-            Array.Copy(existingUnits, merged, existingUnits.Length);
-            for (var i = 0; i < extraBlueUnits.Count; i++)
+            var merged = new UnitSpawnConfig[sceneBlueUnits.Count + extraBlueUnits.Count];
+            for (var i = 0; i < sceneBlueUnits.Count; i++)
             {
-                merged[existingUnits.Length + i] = extraBlueUnits[i];
+                merged[i] = sceneBlueUnits[i];
             }
 
+            for (var i = 0; i < extraBlueUnits.Count; i++)
+            {
+                merged[sceneBlueUnits.Count + i] = extraBlueUnits[i];
+            }
+
+            config.blueTeam ??= new TeamConfig { units = Array.Empty<UnitSpawnConfig>() };
             config.blueTeam.units = merged;
         }
 
@@ -923,6 +1172,9 @@ namespace AutoBattler
             {
                 slot.occupiedMapItemId = string.Empty;
                 slot.selectedUnitCardIds.Clear();
+                slot.selectedUnitMissions.Clear();
+                ReleaseSceneUnitItems(slot.scenePlayerUnits);
+                slot.scenePlayerUnits.Clear();
 
                 if (pendingBattleResult.victory)
                 {
@@ -1742,7 +1994,7 @@ namespace AutoBattler
             return applied;
         }
 
-        private List<UnitSpawnConfig> BuildMissionBlueUnitCards(List<string> selectedUnitCardIds)
+        private List<UnitSpawnConfig> BuildMissionBlueUnitCards(List<string> selectedUnitCardIds, List<AssignedUnitMissionData> selectedUnitMissions)
         {
             var result = new List<UnitSpawnConfig>();
             if (selectedUnitCardIds == null || selectedUnitCardIds.Count == 0)
@@ -1773,6 +2025,40 @@ namespace AutoBattler
 
                 ApplyEquippedItemEffects(ownedCard, unitSpawn);
                 unitSpawn.ownedUnitCardId = ownedCard.unitCardId;
+                unitSpawn.deploymentUnitId = ownedCard.unitCardId;
+                ApplyAssignedMission(unitSpawn, FindAssignedMission(selectedUnitMissions, ownedCard.unitCardId));
+                result.Add(unitSpawn);
+            }
+
+            return result;
+        }
+
+        private List<UnitSpawnConfig> BuildMissionScenePlayerUnits(List<ScenePlayerDeploymentData> scenePlayerUnits, List<AssignedUnitMissionData> selectedUnitMissions)
+        {
+            var result = new List<UnitSpawnConfig>();
+            if (scenePlayerUnits == null || scenePlayerUnits.Count == 0)
+            {
+                return result;
+            }
+
+            var catalog = GameDataCatalogLoader.Load();
+            for (var i = 0; i < scenePlayerUnits.Count; i++)
+            {
+                var deployment = scenePlayerUnits[i];
+                if (deployment == null)
+                {
+                    continue;
+                }
+
+                var unitSpawn = BuildUnitSpawnConfigFromSceneDeployment(catalog, deployment);
+                if (unitSpawn == null)
+                {
+                    continue;
+                }
+
+                ApplyEquippedItemEffects(deployment, unitSpawn);
+                unitSpawn.deploymentUnitId = deployment.deploymentUnitId;
+                ApplyAssignedMission(unitSpawn, FindAssignedMission(selectedUnitMissions, deployment.deploymentUnitId));
                 result.Add(unitSpawn);
             }
 
@@ -1810,6 +2096,118 @@ namespace AutoBattler
             return unitSpawn;
         }
 
+        private static UnitSpawnConfig BuildUnitSpawnConfigFromSceneDeployment(GameDataCatalog catalog, ScenePlayerDeploymentData deployment)
+        {
+            if (catalog == null || deployment == null || string.IsNullOrWhiteSpace(deployment.baseTemplateId))
+            {
+                return null;
+            }
+
+            if (!catalog.TryGetUnitTemplate(deployment.baseTemplateId, out var template))
+            {
+                return null;
+            }
+
+            var resolvedName = string.IsNullOrWhiteSpace(deployment.displayName) ? template.UnitName : deployment.displayName;
+            if (string.IsNullOrWhiteSpace(deployment.overrideJson))
+            {
+                var unitSpawn = UnitSpawnConfig.FromTemplate(catalog, template.UnitTypeKey, resolvedName, 1);
+                unitSpawn.mission = deployment.mission;
+                unitSpawn.sceneUnitId = deployment.sceneUnitId;
+                return unitSpawn;
+            }
+
+            var source = JsonDataHelper.AsObject(MiniJson.Deserialize(deployment.overrideJson));
+            if (source == null)
+            {
+                var unitSpawn = UnitSpawnConfig.FromTemplate(catalog, template.UnitTypeKey, resolvedName, 1);
+                unitSpawn.mission = deployment.mission;
+                unitSpawn.sceneUnitId = deployment.sceneUnitId;
+                return unitSpawn;
+            }
+
+            source["unitType"] = template.UnitTypeKey;
+            source["unitName"] = resolvedName;
+            source["count"] = 1L;
+            if (!SceneBattleConfigLoader.TryBuildUnitSpawnConfigFromSource(source, catalog, out var resolved))
+            {
+                return null;
+            }
+
+            resolved.mission = deployment.mission;
+            resolved.sceneUnitId = deployment.sceneUnitId;
+            return resolved;
+        }
+
+        private AssignedUnitMissionData FindAssignedMissionForCard(OwnedUnitCard ownedCard)
+        {
+            if (ownedCard == null || string.IsNullOrWhiteSpace(ownedCard.assignedHexSlotId))
+            {
+                return null;
+            }
+
+            return GetAssignedMissionData(ownedCard.assignedHexSlotId, ownedCard.unitCardId);
+        }
+
+        private AssignedUnitMissionData FindAssignedMissionForDeployment(string deploymentUnitId)
+        {
+            if (string.IsNullOrWhiteSpace(deploymentUnitId))
+            {
+                return null;
+            }
+
+            for (var i = 0; i < saveData.hexBoardState.Count; i++)
+            {
+                var slot = saveData.hexBoardState[i];
+                if (slot == null)
+                {
+                    continue;
+                }
+
+                var missionData = FindAssignedMission(slot.selectedUnitMissions, deploymentUnitId);
+                if (missionData != null)
+                {
+                    return missionData;
+                }
+            }
+
+            return null;
+        }
+
+        private static AssignedUnitMissionData FindAssignedMission(List<AssignedUnitMissionData> selectedUnitMissions, string unitCardId)
+        {
+            if (selectedUnitMissions == null || string.IsNullOrWhiteSpace(unitCardId))
+            {
+                return null;
+            }
+
+            for (var i = 0; i < selectedUnitMissions.Count; i++)
+            {
+                var missionData = selectedUnitMissions[i];
+                if (missionData != null
+                    && string.Equals(missionData.unitCardId, unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return missionData;
+                }
+            }
+
+            return null;
+        }
+
+        private static void ApplyAssignedMission(UnitSpawnConfig unitSpawn, AssignedUnitMissionData missionData)
+        {
+            if (unitSpawn == null || missionData == null)
+            {
+                return;
+            }
+
+            NormalizeAssignedMissionData(missionData);
+            unitSpawn.movementInstruction = missionData.movementInstruction;
+            unitSpawn.engagementInstruction = missionData.engagementInstruction;
+            unitSpawn.priorityInstruction = missionData.priorityInstruction;
+            unitSpawn.assignedTargetOwnedUnitCardId = missionData.assignedTargetUnitCardId ?? string.Empty;
+        }
+
         private void ApplyEquippedItemEffects(OwnedUnitCard ownedCard, UnitSpawnConfig unitSpawn)
         {
             if (ownedCard == null || unitSpawn == null || unitSpawn.definition == null || lootCatalogs == null)
@@ -1824,6 +2222,42 @@ namespace AutoBattler
             {
                 var ownedItem = FindOwnedUnitItem(ownedCard.equippedItemIds[i]);
                 if (ownedItem == null || !string.Equals(ownedItem.equippedToUnitCardId, ownedCard.unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!lootCatalogs.TryGetItemDefinition(ownedItem.itemDefinitionId, out var itemDefinition) || itemDefinition == null)
+                {
+                    continue;
+                }
+
+                AppendItemEffects(effects, itemDefinition.effects);
+                AppendAppliedModifierEffects(effects, ownedItem, ref damageBonusMin, ref damageBonusMax);
+            }
+
+            if (effects.Count == 0 && damageBonusMin == 0 && damageBonusMax == 0)
+            {
+                return;
+            }
+
+            unitSpawn.definition = ApplyItemEffectsToDefinition(unitSpawn.definition, effects, damageBonusMin, damageBonusMax);
+        }
+
+        private void ApplyEquippedItemEffects(ScenePlayerDeploymentData deployment, UnitSpawnConfig unitSpawn)
+        {
+            if (deployment == null || unitSpawn == null || unitSpawn.definition == null || lootCatalogs == null)
+            {
+                return;
+            }
+
+            var equippedItems = GetEquippedSceneUnitItems(deployment.deploymentUnitId);
+            var effects = new List<ItemEffectDefinition>();
+            var damageBonusMin = 0;
+            var damageBonusMax = 0;
+            for (var i = 0; i < equippedItems.Count; i++)
+            {
+                var ownedItem = equippedItems[i];
+                if (ownedItem == null || !string.Equals(ownedItem.equippedToSceneDeploymentUnitId, deployment.deploymentUnitId, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -2362,6 +2796,7 @@ namespace AutoBattler
                 }
 
                 item.appliedModifiers ??= new List<AppliedItemModifierData>();
+                item.equippedToSceneDeploymentUnitId ??= string.Empty;
                 NormalizeAppliedModifiers(item);
                 MigrateLegacyItemUpgrades(item);
             }
@@ -2383,6 +2818,12 @@ namespace AutoBattler
                 if (data.hexBoardState[i] != null)
                 {
                     data.hexBoardState[i].selectedUnitCardIds ??= new List<string>();
+                    data.hexBoardState[i].selectedUnitMissions ??= new List<AssignedUnitMissionData>();
+                    data.hexBoardState[i].scenePlayerUnits ??= new List<ScenePlayerDeploymentData>();
+                    for (var missionIndex = 0; missionIndex < data.hexBoardState[i].selectedUnitMissions.Count; missionIndex++)
+                    {
+                        NormalizeAssignedMissionData(data.hexBoardState[i].selectedUnitMissions[missionIndex]);
+                    }
                 }
             }
 
@@ -3224,6 +3665,46 @@ namespace AutoBattler
                 return false;
             }
 
+            return CanEquipItemToSlotSet(item, cardDefinition.defaultItemSlots, card.equippedItemIds, null, out error);
+        }
+
+        private bool CanEquipItemToSceneDeployment(OwnedUnitItem item, ScenePlayerDeploymentData deployment, out string error)
+        {
+            error = string.Empty;
+            if (item == null || deployment == null)
+            {
+                error = "Invalid item or scene unit.";
+                return false;
+            }
+
+            if (!catalogs.TryGetUnitCardDefinition(deployment.baseTemplateId, out var cardDefinition) || cardDefinition == null)
+            {
+                error = "Unable to resolve the selected scene unit definition.";
+                return false;
+            }
+
+            var equippedSceneItemIds = new List<string>();
+            var equippedItems = GetEquippedSceneUnitItems(deployment.deploymentUnitId);
+            for (var i = 0; i < equippedItems.Count; i++)
+            {
+                if (equippedItems[i] != null)
+                {
+                    equippedSceneItemIds.Add(equippedItems[i].itemInstanceId);
+                }
+            }
+
+            return CanEquipItemToSlotSet(item, cardDefinition.defaultItemSlots, equippedSceneItemIds, deployment.deploymentUnitId, out error);
+        }
+
+        private bool CanEquipItemToSlotSet(OwnedUnitItem item, List<string> slotTypes, List<string> equippedItemIds, string equippedSceneDeploymentUnitId, out string error)
+        {
+            error = string.Empty;
+            if (item == null)
+            {
+                error = "Invalid item.";
+                return false;
+            }
+
             if (lootCatalogs == null || !lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out var itemDefinition) || itemDefinition == null)
             {
                 error = "Unable to resolve the selected item definition.";
@@ -3237,9 +3718,9 @@ namespace AutoBattler
             }
 
             var totalSlots = 0;
-            for (var i = 0; i < cardDefinition.defaultItemSlots.Count; i++)
+            for (var i = 0; i < slotTypes.Count; i++)
             {
-                if (string.Equals(cardDefinition.defaultItemSlots[i], itemDefinition.itemSlotType, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(slotTypes[i], itemDefinition.itemSlotType, StringComparison.OrdinalIgnoreCase))
                 {
                     totalSlots++;
                 }
@@ -3252,9 +3733,9 @@ namespace AutoBattler
             }
 
             var usedSlots = 0;
-            for (var i = 0; i < card.equippedItemIds.Count; i++)
+            for (var i = 0; i < equippedItemIds.Count; i++)
             {
-                var equippedItem = FindOwnedUnitItem(card.equippedItemIds[i]);
+                var equippedItem = FindOwnedUnitItem(equippedItemIds[i]);
                 if (equippedItem == null)
                 {
                     continue;
@@ -3307,6 +3788,390 @@ namespace AutoBattler
             }
 
             return false;
+        }
+
+        private static List<AssignedUnitMissionData> CloneAssignedMissionList(List<AssignedUnitMissionData> source)
+        {
+            var clone = new List<AssignedUnitMissionData>();
+            if (source == null)
+            {
+                return clone;
+            }
+
+            for (var i = 0; i < source.Count; i++)
+            {
+                var entry = source[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.unitCardId))
+                {
+                    continue;
+                }
+
+                clone.Add(new AssignedUnitMissionData
+                {
+                    unitCardId = entry.unitCardId,
+                    movementInstruction = entry.movementInstruction,
+                    engagementInstruction = entry.engagementInstruction,
+                    priorityInstruction = entry.priorityInstruction,
+                    assignedTargetUnitCardId = entry.assignedTargetUnitCardId ?? string.Empty,
+                    assignment = entry.assignment,
+                    escortTargetUnitCardId = entry.escortTargetUnitCardId ?? string.Empty
+                });
+            }
+
+            return clone;
+        }
+
+        private static List<ScenePlayerDeploymentData> CloneScenePlayerDeployments(List<ScenePlayerDeploymentData> source)
+        {
+            var clone = new List<ScenePlayerDeploymentData>();
+            if (source == null)
+            {
+                return clone;
+            }
+
+            for (var i = 0; i < source.Count; i++)
+            {
+                var entry = source[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.deploymentUnitId))
+                {
+                    continue;
+                }
+
+                clone.Add(new ScenePlayerDeploymentData
+                {
+                    deploymentUnitId = entry.deploymentUnitId,
+                    sceneUnitId = entry.sceneUnitId,
+                    displayName = entry.displayName,
+                    baseTemplateId = entry.baseTemplateId,
+                    overrideJson = entry.overrideJson,
+                    mission = entry.mission,
+                    movementInstruction = entry.movementInstruction,
+                    engagementInstruction = entry.engagementInstruction,
+                    priorityInstruction = entry.priorityInstruction,
+                    assignedTargetDeploymentUnitId = entry.assignedTargetDeploymentUnitId
+                });
+            }
+
+            return clone;
+        }
+
+        private List<ScenePlayerDeploymentData> BuildScenePlayerDeployments(string sceneName)
+        {
+            var result = new List<ScenePlayerDeploymentData>();
+            var config = SceneBattleConfigLoader.Load(sceneName);
+            var units = config?.blueTeam?.units;
+            if (units == null)
+            {
+                return result;
+            }
+
+            for (var i = 0; i < units.Length; i++)
+            {
+                var unit = units[i];
+                if (unit?.definition == null)
+                {
+                    continue;
+                }
+
+                var count = Mathf.Max(1, unit.count);
+                for (var instanceIndex = 0; instanceIndex < count; instanceIndex++)
+                {
+                    var deploymentId = "scene:" + sceneName + ":" + (unit.sceneUnitId ?? ("unit_" + i)) + ":" + instanceIndex;
+                    result.Add(new ScenePlayerDeploymentData
+                    {
+                        deploymentUnitId = deploymentId,
+                        sceneUnitId = unit.sceneUnitId ?? ("unit_" + i),
+                        displayName = count > 1 ? unit.definition.UnitName + " " + (instanceIndex + 1) : unit.definition.UnitName,
+                        baseTemplateId = unit.definition.TemplateId,
+                        overrideJson = unit.persistentOverrideJson ?? string.Empty,
+                        mission = unit.mission,
+                        movementInstruction = unit.movementInstruction,
+                        engagementInstruction = unit.engagementInstruction,
+                        priorityInstruction = unit.priorityInstruction,
+                        assignedTargetDeploymentUnitId = unit.assignedTargetOwnedUnitCardId ?? string.Empty
+                    });
+                }
+            }
+
+            return result;
+        }
+
+        private static bool IsSelectedDeploymentUnit(HexSlotSaveData slot, string deploymentUnitId)
+        {
+            if (slot == null || string.IsNullOrWhiteSpace(deploymentUnitId))
+            {
+                return false;
+            }
+
+            if (slot.selectedUnitCardIds != null && slot.selectedUnitCardIds.Contains(deploymentUnitId))
+            {
+                return true;
+            }
+
+            if (slot.scenePlayerUnits == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < slot.scenePlayerUnits.Count; i++)
+            {
+                if (slot.scenePlayerUnits[i] != null
+                    && string.Equals(slot.scenePlayerUnits[i].deploymentUnitId, deploymentUnitId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private UnitType ResolveDeploymentUnitType(HexSlotSaveData slot, string deploymentUnitId)
+        {
+            var card = FindUnitCard(deploymentUnitId);
+            if (card != null)
+            {
+                return GetUnitTypeForCard(card);
+            }
+
+            if (slot?.scenePlayerUnits != null)
+            {
+                for (var i = 0; i < slot.scenePlayerUnits.Count; i++)
+                {
+                    var deployment = slot.scenePlayerUnits[i];
+                    if (deployment == null || !string.Equals(deployment.deploymentUnitId, deploymentUnitId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var catalog = GameDataCatalogLoader.Load();
+                    if (catalog.TryGetUnitTemplate(deployment.baseTemplateId, out var template) && template != null)
+                    {
+                        return template.UnitType;
+                    }
+                }
+            }
+
+            return UnitType.Infantry;
+        }
+
+        private ScenePlayerDeploymentData FindScenePlayerDeployment(string deploymentUnitId)
+        {
+            if (string.IsNullOrWhiteSpace(deploymentUnitId))
+            {
+                return null;
+            }
+
+            for (var i = 0; i < saveData.hexBoardState.Count; i++)
+            {
+                var slot = saveData.hexBoardState[i];
+                if (slot?.scenePlayerUnits == null)
+                {
+                    continue;
+                }
+
+                for (var deploymentIndex = 0; deploymentIndex < slot.scenePlayerUnits.Count; deploymentIndex++)
+                {
+                    var deployment = slot.scenePlayerUnits[deploymentIndex];
+                    if (deployment != null
+                        && string.Equals(deployment.deploymentUnitId, deploymentUnitId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return deployment;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private void ReleaseSceneUnitItems(List<ScenePlayerDeploymentData> scenePlayerUnits)
+        {
+            if (scenePlayerUnits == null || scenePlayerUnits.Count == 0)
+            {
+                return;
+            }
+
+            for (var i = 0; i < saveData.ownedUnitItems.Count; i++)
+            {
+                var item = saveData.ownedUnitItems[i];
+                if (item == null || string.IsNullOrWhiteSpace(item.equippedToSceneDeploymentUnitId))
+                {
+                    continue;
+                }
+
+                for (var sceneIndex = 0; sceneIndex < scenePlayerUnits.Count; sceneIndex++)
+                {
+                    var deployment = scenePlayerUnits[sceneIndex];
+                    if (deployment != null
+                        && string.Equals(item.equippedToSceneDeploymentUnitId, deployment.deploymentUnitId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        item.equippedToSceneDeploymentUnitId = string.Empty;
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static void RemoveMissionAssignment(HexSlotSaveData slot, string unitCardId)
+        {
+            if (slot?.selectedUnitMissions == null || string.IsNullOrWhiteSpace(unitCardId))
+            {
+                return;
+            }
+
+            for (var i = slot.selectedUnitMissions.Count - 1; i >= 0; i--)
+            {
+                var missionData = slot.selectedUnitMissions[i];
+                if (missionData != null
+                    && string.Equals(missionData.unitCardId, unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    slot.selectedUnitMissions.RemoveAt(i);
+                }
+            }
+        }
+
+        private static void RemoveEscortReferences(HexSlotSaveData slot, string unitCardId)
+        {
+            if (slot?.selectedUnitMissions == null || string.IsNullOrWhiteSpace(unitCardId))
+            {
+                return;
+            }
+
+            for (var i = 0; i < slot.selectedUnitMissions.Count; i++)
+            {
+                var missionData = slot.selectedUnitMissions[i];
+                if (missionData == null
+                    || !string.Equals(GetAssignedTargetUnitCardId(missionData), unitCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                NormalizeAssignedMissionData(missionData);
+                missionData.movementInstruction = MovementInstructionType.UseUnitDefault;
+                missionData.assignedTargetUnitCardId = string.Empty;
+                missionData.assignment = PlayerMissionAssignmentType.UseUnitDefault;
+                missionData.escortTargetUnitCardId = string.Empty;
+            }
+
+            for (var i = slot.selectedUnitMissions.Count - 1; i >= 0; i--)
+            {
+                if (slot.selectedUnitMissions[i] != null
+                    && IsDefaultMissionData(slot.selectedUnitMissions[i]))
+                {
+                    slot.selectedUnitMissions.RemoveAt(i);
+                }
+            }
+        }
+
+        private static void NormalizeAssignedMissionData(AssignedUnitMissionData missionData)
+        {
+            if (missionData == null)
+            {
+                return;
+            }
+
+            if (missionData.movementInstruction != MovementInstructionType.UseUnitDefault
+                || missionData.engagementInstruction != EngagementInstructionType.UseUnitDefault
+                || missionData.priorityInstruction != PriorityInstructionType.UseUnitDefault
+                || !string.IsNullOrWhiteSpace(missionData.assignedTargetUnitCardId))
+            {
+                if (missionData.movementInstruction != MovementInstructionType.FollowAssignedTank)
+                {
+                    missionData.assignedTargetUnitCardId = string.Empty;
+                }
+
+                missionData.assignment = PlayerMissionAssignmentType.UseUnitDefault;
+                missionData.escortTargetUnitCardId = string.Empty;
+                return;
+            }
+
+            ConvertLegacyAssignmentToInstructions(
+                missionData.assignment,
+                missionData.escortTargetUnitCardId,
+                out missionData.movementInstruction,
+                out missionData.engagementInstruction,
+                out missionData.priorityInstruction,
+                out missionData.assignedTargetUnitCardId);
+
+            missionData.assignment = PlayerMissionAssignmentType.UseUnitDefault;
+            missionData.escortTargetUnitCardId = string.Empty;
+        }
+
+        private static void ConvertLegacyAssignmentToInstructions(
+            PlayerMissionAssignmentType assignment,
+            string escortTargetUnitCardId,
+            out MovementInstructionType movementInstruction,
+            out EngagementInstructionType engagementInstruction,
+            out PriorityInstructionType priorityInstruction,
+            out string assignedTargetUnitCardId)
+        {
+            movementInstruction = MovementInstructionType.UseUnitDefault;
+            engagementInstruction = EngagementInstructionType.UseUnitDefault;
+            priorityInstruction = PriorityInstructionType.UseUnitDefault;
+            assignedTargetUnitCardId = string.Empty;
+
+            switch (assignment)
+            {
+                case PlayerMissionAssignmentType.SeekObjective:
+                    movementInstruction = MovementInstructionType.SeekVictoryPoint;
+                    break;
+                case PlayerMissionAssignmentType.AttackInfantryFirst:
+                    movementInstruction = MovementInstructionType.SeekVictoryPoint;
+                    engagementInstruction = EngagementInstructionType.AttackEnemies;
+                    priorityInstruction = PriorityInstructionType.PrioritizeInfantry;
+                    break;
+                case PlayerMissionAssignmentType.AttackTanksFirst:
+                    movementInstruction = MovementInstructionType.SeekVictoryPoint;
+                    engagementInstruction = EngagementInstructionType.AttackEnemies;
+                    priorityInstruction = PriorityInstructionType.PrioritizeTanks;
+                    break;
+                case PlayerMissionAssignmentType.EscortAssignedTank:
+                    movementInstruction = MovementInstructionType.FollowAssignedTank;
+                    engagementInstruction = EngagementInstructionType.AttackEnemies;
+                    assignedTargetUnitCardId = escortTargetUnitCardId ?? string.Empty;
+                    break;
+                case PlayerMissionAssignmentType.ScoutDoNotEngage:
+                    movementInstruction = MovementInstructionType.SeekVictoryPoint;
+                    engagementInstruction = EngagementInstructionType.AvoidEngagement;
+                    break;
+            }
+        }
+
+        private static bool IsDefaultMissionData(AssignedUnitMissionData missionData)
+        {
+            if (missionData == null)
+            {
+                return true;
+            }
+
+            NormalizeAssignedMissionData(missionData);
+            return missionData.movementInstruction == MovementInstructionType.UseUnitDefault
+                && missionData.engagementInstruction == EngagementInstructionType.UseUnitDefault
+                && missionData.priorityInstruction == PriorityInstructionType.UseUnitDefault
+                && string.IsNullOrWhiteSpace(missionData.assignedTargetUnitCardId);
+        }
+
+        private static string GetAssignedTargetUnitCardId(AssignedUnitMissionData missionData)
+        {
+            if (missionData == null)
+            {
+                return string.Empty;
+            }
+
+            NormalizeAssignedMissionData(missionData);
+            return missionData.assignedTargetUnitCardId ?? string.Empty;
+        }
+
+        private static UnitType GetUnitTypeForCard(OwnedUnitCard card)
+        {
+            if (card == null)
+            {
+                return UnitType.Infantry;
+            }
+
+            var catalog = GameDataCatalogLoader.Load();
+            return catalog.TryGetUnitTemplate(card.baseTemplateId, out var template) && template != null
+                ? template.UnitType
+                : UnitType.Infantry;
         }
 
         private int GetFieldingGoldCost(OwnedUnitCard card)

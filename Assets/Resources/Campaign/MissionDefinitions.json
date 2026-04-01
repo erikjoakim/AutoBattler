@@ -1,0 +1,61 @@
+{
+  "movementInstructions": [
+    {
+      "instructionType": "UseUnitDefault",
+      "displayName": "Unit Default",
+      "description": "Use the unit template's built-in mission."
+    },
+    {
+      "instructionType": "HoldPosition",
+      "displayName": "Hold Position",
+      "description": "Hold the current position and react locally."
+    },
+    {
+      "instructionType": "SeekVictoryPoint",
+      "displayName": "Seek VictoryPoint",
+      "description": "Advance toward the current objective."
+    },
+    {
+      "instructionType": "FollowAssignedTank",
+      "displayName": "Follow Assigned Tank",
+      "description": "Follow a selected friendly tank.",
+      "allowedUnitTypes": ["Infantry"],
+      "requiresAssignedTarget": true,
+      "assignedTargetKind": "FriendlyTank"
+    }
+  ],
+  "engagementInstructions": [
+    {
+      "instructionType": "UseUnitDefault",
+      "displayName": "Unit Default",
+      "description": "Use the unit template's normal engagement behavior."
+    },
+    {
+      "instructionType": "AttackEnemies",
+      "displayName": "Attack Enemies",
+      "description": "Engage visible enemies."
+    },
+    {
+      "instructionType": "AvoidEngagement",
+      "displayName": "Avoid Engagement",
+      "description": "Avoid initiating combat and only self-defend."
+    }
+  ],
+  "priorityInstructions": [
+    {
+      "instructionType": "UseUnitDefault",
+      "displayName": "Unit Default",
+      "description": "Use normal target selection."
+    },
+    {
+      "instructionType": "PrioritizeInfantry",
+      "displayName": "Prioritize Infantry",
+      "description": "Prefer infantry targets when visible."
+    },
+    {
+      "instructionType": "PrioritizeTanks",
+      "displayName": "Prioritize Tanks",
+      "description": "Prefer tank targets when visible."
+    }
+  ]
+}

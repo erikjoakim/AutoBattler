@@ -84,6 +84,43 @@ namespace AutoBattler
     }
 
     [Serializable]
+    public sealed class MovementInstructionDefinition
+    {
+        public MovementInstructionType instructionType = MovementInstructionType.UseUnitDefault;
+        public string displayName;
+        public string description;
+        public List<string> allowedUnitTypes = new List<string>();
+        public bool requiresAssignedTarget;
+        public string assignedTargetKind;
+    }
+
+    [Serializable]
+    public sealed class EngagementInstructionDefinition
+    {
+        public EngagementInstructionType instructionType = EngagementInstructionType.UseUnitDefault;
+        public string displayName;
+        public string description;
+        public List<string> allowedUnitTypes = new List<string>();
+    }
+
+    [Serializable]
+    public sealed class PriorityInstructionDefinition
+    {
+        public PriorityInstructionType instructionType = PriorityInstructionType.UseUnitDefault;
+        public string displayName;
+        public string description;
+        public List<string> allowedUnitTypes = new List<string>();
+    }
+
+    [Serializable]
+    public sealed class MissionInstructionDefinitionCatalog
+    {
+        public List<MovementInstructionDefinition> movementInstructions = new List<MovementInstructionDefinition>();
+        public List<EngagementInstructionDefinition> engagementInstructions = new List<EngagementInstructionDefinition>();
+        public List<PriorityInstructionDefinition> priorityInstructions = new List<PriorityInstructionDefinition>();
+    }
+
+    [Serializable]
     public sealed class StartingMapEntry
     {
         public string mapDefinitionId;
@@ -152,12 +189,14 @@ namespace AutoBattler
         public CampaignHexState state;
         public string occupiedMapItemId;
         public List<string> selectedUnitCardIds = new List<string>();
+        public List<AssignedUnitMissionData> selectedUnitMissions = new List<AssignedUnitMissionData>();
+        public List<ScenePlayerDeploymentData> scenePlayerUnits = new List<ScenePlayerDeploymentData>();
     }
 
     [Serializable]
     public sealed class CampaignSaveData
     {
-        public int saveVersion = 3;
+        public int saveVersion = 4;
         public int playerExperience;
         public int gold = 50;
         public List<CurrencyItemStack> currencyItemStacks = new List<CurrencyItemStack>();
@@ -177,7 +216,36 @@ namespace AutoBattler
         public string mapDefinitionId;
         public string sceneName;
         public List<string> selectedUnitCardIds = new List<string>();
+        public List<AssignedUnitMissionData> selectedUnitMissions = new List<AssignedUnitMissionData>();
+        public List<ScenePlayerDeploymentData> scenePlayerUnits = new List<ScenePlayerDeploymentData>();
         public PreparedMissionRewardProfile rewardProfile = new PreparedMissionRewardProfile();
+    }
+
+    [Serializable]
+    public sealed class ScenePlayerDeploymentData
+    {
+        public string deploymentUnitId;
+        public string sceneUnitId;
+        public string displayName;
+        public string baseTemplateId;
+        public string overrideJson;
+        public MissionType mission;
+        public MovementInstructionType movementInstruction = MovementInstructionType.UseUnitDefault;
+        public EngagementInstructionType engagementInstruction = EngagementInstructionType.UseUnitDefault;
+        public PriorityInstructionType priorityInstruction = PriorityInstructionType.UseUnitDefault;
+        public string assignedTargetDeploymentUnitId;
+    }
+
+    [Serializable]
+    public sealed class AssignedUnitMissionData
+    {
+        public string unitCardId;
+        public MovementInstructionType movementInstruction = MovementInstructionType.UseUnitDefault;
+        public EngagementInstructionType engagementInstruction = EngagementInstructionType.UseUnitDefault;
+        public PriorityInstructionType priorityInstruction = PriorityInstructionType.UseUnitDefault;
+        public string assignedTargetUnitCardId;
+        public PlayerMissionAssignmentType assignment = PlayerMissionAssignmentType.UseUnitDefault;
+        public string escortTargetUnitCardId;
     }
 
     [Serializable]

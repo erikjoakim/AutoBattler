@@ -36,6 +36,7 @@ namespace AutoBattler
         private GameObject selectionMarker;
         private Transform selectionRing;
         private Transform selectionBeacon;
+        private MissionInstructionDefinitionCatalog missionInstructionCatalog;
 
         private void Update()
         {
@@ -189,6 +190,14 @@ namespace AutoBattler
 
             targetBuilder.AppendLine("Team: " + unit.Team);
             targetBuilder.AppendLine("Mission: " + unit.Mission);
+            missionInstructionCatalog ??= CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions;
+            targetBuilder.AppendLine("Move: " + FormatMovementInstruction(unit.MovementInstruction, missionInstructionCatalog));
+            targetBuilder.AppendLine("Engage: " + FormatEngagementInstruction(unit.EngagementInstruction, missionInstructionCatalog));
+            targetBuilder.AppendLine("Priority: " + FormatPriorityInstruction(unit.PriorityInstruction, missionInstructionCatalog));
+            if (unit.MovementInstruction == MovementInstructionType.FollowAssignedTank)
+            {
+                targetBuilder.AppendLine("Target: " + FormatAssignedTarget(unit.AssignedTargetOwnedUnitCardId));
+            }
             targetBuilder.AppendLine("Class: " + definition.UnitType);
             targetBuilder.AppendLine("Health: " + unit.CurrentHealth + " / " + FormatInt(definition.MaxHealth, baseTemplate?.MaxHealth, richText));
             targetBuilder.AppendLine("Armor: " + FormatInt(definition.Armor, baseTemplate?.Armor, richText));
@@ -514,6 +523,84 @@ namespace AutoBattler
 
             var color = currentValue > baseValue.Value ? IncreasedColor : ReducedColor;
             return "<color=" + color + ">" + currentText + "</color> (" + formattedBaseText + ")";
+        }
+
+        private static string FormatMovementInstruction(MovementInstructionType instruction, MissionInstructionDefinitionCatalog catalog)
+        {
+            var definitions = catalog?.movementInstructions;
+            if (definitions != null)
+            {
+                for (var i = 0; i < definitions.Count; i++)
+                {
+                    if (definitions[i] != null && definitions[i].instructionType == instruction && !string.IsNullOrWhiteSpace(definitions[i].displayName))
+                    {
+                        return definitions[i].displayName;
+                    }
+                }
+            }
+
+            return instruction switch
+            {
+                MovementInstructionType.HoldPosition => "Hold Position",
+                MovementInstructionType.SeekVictoryPoint => "Seek VictoryPoint",
+                MovementInstructionType.FollowAssignedTank => "Follow Assigned Tank",
+                _ => "Unit Default"
+            };
+        }
+
+        private static string FormatEngagementInstruction(EngagementInstructionType instruction, MissionInstructionDefinitionCatalog catalog)
+        {
+            var definitions = catalog?.engagementInstructions;
+            if (definitions != null)
+            {
+                for (var i = 0; i < definitions.Count; i++)
+                {
+                    if (definitions[i] != null && definitions[i].instructionType == instruction && !string.IsNullOrWhiteSpace(definitions[i].displayName))
+                    {
+                        return definitions[i].displayName;
+                    }
+                }
+            }
+
+            return instruction switch
+            {
+                EngagementInstructionType.AttackEnemies => "Attack Enemies",
+                EngagementInstructionType.AvoidEngagement => "Avoid Engagement",
+                _ => "Unit Default"
+            };
+        }
+
+        private static string FormatPriorityInstruction(PriorityInstructionType instruction, MissionInstructionDefinitionCatalog catalog)
+        {
+            var definitions = catalog?.priorityInstructions;
+            if (definitions != null)
+            {
+                for (var i = 0; i < definitions.Count; i++)
+                {
+                    if (definitions[i] != null && definitions[i].instructionType == instruction && !string.IsNullOrWhiteSpace(definitions[i].displayName))
+                    {
+                        return definitions[i].displayName;
+                    }
+                }
+            }
+
+            return instruction switch
+            {
+                PriorityInstructionType.PrioritizeInfantry => "Prioritize Infantry",
+                PriorityInstructionType.PrioritizeTanks => "Prioritize Tanks",
+                _ => "Unit Default"
+            };
+        }
+
+        private static string FormatAssignedTarget(string ownedUnitCardId)
+        {
+            if (string.IsNullOrWhiteSpace(ownedUnitCardId))
+            {
+                return "None";
+            }
+
+            var targetUnit = BattleUnitRegistry.GetAliveUnitByOwnedCardId(ownedUnitCardId);
+            return targetUnit?.Definition?.UnitName ?? "Missing";
         }
 
         private void EnsureStyles()

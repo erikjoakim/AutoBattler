@@ -135,6 +135,7 @@ namespace AutoBattler
         public string itemInstanceId;
         public string itemDefinitionId;
         public string equippedToUnitCardId;
+        public string equippedToSceneDeploymentUnitId;
         public List<AppliedItemModifierData> appliedModifiers = new List<AppliedItemModifierData>();
         [FormerlySerializedAs("upgradeLevel")]
         public int legacyUpgradeLevel;

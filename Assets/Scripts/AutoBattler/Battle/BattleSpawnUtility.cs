@@ -9,9 +9,14 @@ namespace AutoBattler
             UnitDefinition definition,
             Team team,
             MissionType mission,
+            MovementInstructionType movementInstruction,
+            EngagementInstructionType engagementInstruction,
+            PriorityInstructionType priorityInstruction,
             Vector3 position,
             Vector3 targetPoint,
             string ownedUnitCardId = null,
+            string deploymentUnitId = null,
+            string assignedTargetOwnedUnitCardId = null,
             string lootTableId = null,
             bool returnToHeadquartersIfSurvives = false,
             bool captureAsUnitCardOnDeath = false,
@@ -27,6 +32,8 @@ namespace AutoBattler
 
             var unit = unitObject.AddComponent<BattleUnit>();
             unit.Initialize(definition, team, mission, position, targetPoint, lootTableId);
+            unit.ConfigureMissionInstructions(movementInstruction, engagementInstruction, priorityInstruction, assignedTargetOwnedUnitCardId);
+            unit.LinkDeploymentUnit(string.IsNullOrWhiteSpace(deploymentUnitId) ? ownedUnitCardId : deploymentUnitId);
             if (!string.IsNullOrWhiteSpace(ownedUnitCardId))
             {
                 unit.LinkOwnedUnitCard(ownedUnitCardId);

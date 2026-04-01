@@ -12,6 +12,12 @@ namespace AutoBattler
 {
     public sealed class HeadQuarterBootstrap : MonoBehaviour
     {
+        private sealed class DeploymentEscortTargetOption
+        {
+            public string deploymentUnitId;
+            public string displayName;
+        }
+
         private const string HeadQuarterSceneName = "HeadQuarter";
         private const string LayoutResourcePath = "HeadQuarter/HeadQuarterLayout";
         private const string StyleResourcePath = "HeadQuarter/HeadQuarterStyle";
@@ -287,7 +293,7 @@ namespace AutoBattler
             for (var i = 0; i < ownedItems.Count; i++)
             {
                 var item = ownedItems[i];
-                if (item == null || !string.IsNullOrWhiteSpace(item.equippedToUnitCardId))
+                if (item == null || !string.IsNullOrWhiteSpace(item.equippedToUnitCardId) || !string.IsNullOrWhiteSpace(item.equippedToSceneDeploymentUnitId))
                 {
                     continue;
                 }
@@ -354,6 +360,7 @@ namespace AutoBattler
 
             var available = CampaignRuntimeContext.Instance.GetAvailableUnitCards(selectedHexSlotId);
             var selected = CampaignRuntimeContext.Instance.GetCardsAssignedToSlot(selectedHexSlotId);
+            var sceneUnits = CampaignRuntimeContext.Instance.GetScenePlayerUnitsForSlot(selectedHexSlotId);
 
             for (var i = 0; i < available.Count; i++)
             {
@@ -366,9 +373,22 @@ namespace AutoBattler
                 availableCardsList.Add(BuildUnitCard(card, false));
             }
 
-            for (var i = 0; i < selected.Count; i++)
+            if (sceneUnits.Count > 0)
             {
-                selectedCardsList.Add(BuildUnitCard(selected[i], true));
+                selectedCardsList.Add(BuildListSectionLabel("Scene Units"));
+                for (var i = 0; i < sceneUnits.Count; i++)
+                {
+                    selectedCardsList.Add(BuildScenePlayerUnitCard(sceneUnits[i]));
+                }
+            }
+
+            if (selected.Count > 0)
+            {
+                selectedCardsList.Add(BuildListSectionLabel("Added Units"));
+                for (var i = 0; i < selected.Count; i++)
+                {
+                    selectedCardsList.Add(BuildUnitCard(selected[i], true));
+                }
             }
 
             if (availableCardsList.childCount == 0)
@@ -455,6 +475,164 @@ namespace AutoBattler
             headerRow.Add(action);
             rootElement.Add(headerRow);
 
+            if (assigned)
+            {
+                var missionRow = new VisualElement();
+                missionRow.AddToClassList("unit-card-mission-row");
+
+                var missionData = GetAssignedMission(card);
+                var currentMovement = missionData?.movementInstruction ?? MovementInstructionType.UseUnitDefault;
+                var currentEngagement = missionData?.engagementInstruction ?? EngagementInstructionType.UseUnitDefault;
+                var currentPriority = missionData?.priorityInstruction ?? PriorityInstructionType.UseUnitDefault;
+                var currentTargetCardId = missionData?.assignedTargetUnitCardId ?? string.Empty;
+
+                var movementInstructions = GetAvailableMovementInstructions(card);
+                var movementChoices = BuildMovementChoiceLabels(movementInstructions);
+                var currentMovementLabel = FormatMovementInstruction(currentMovement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions);
+                if (!movementChoices.Contains(currentMovementLabel))
+                {
+                    currentMovementLabel = movementChoices.Count > 0 ? movementChoices[0] : string.Empty;
+                }
+
+                var movementDropdown = new DropdownField("Move", movementChoices, currentMovementLabel);
+                movementDropdown.AddToClassList("mission-dropdown");
+                movementDropdown.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+                movementDropdown.RegisterValueChangedCallback(evt =>
+                {
+                    evt.StopPropagation();
+                    var availableMovements = GetAvailableMovementInstructions(card);
+                    var selectedIndex = Mathf.Clamp(movementDropdown.index, 0, Mathf.Max(0, availableMovements.Count - 1));
+                    var nextMovement = availableMovements.Count > 0
+                        ? availableMovements[selectedIndex]
+                        : MovementInstructionType.UseUnitDefault;
+                    var nextTargetCardId = nextMovement == MovementInstructionType.FollowAssignedTank
+                        ? ResolveDefaultAssignedTarget(card.unitCardId, currentTargetCardId)
+                        : string.Empty;
+                    if (!CampaignRuntimeContext.Instance.TrySetUnitCardMissionInstructions(
+                            selectedHexSlotId,
+                            card.unitCardId,
+                            nextMovement,
+                            currentEngagement,
+                            currentPriority,
+                            nextTargetCardId,
+                            out var error))
+                    {
+                        SetStatus(error);
+                        movementDropdown.SetValueWithoutNotify(currentMovementLabel);
+                        return;
+                    }
+
+                    SetStatus(card.displayName + " movement set to " + FormatMovementInstruction(nextMovement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions) + ".");
+                    RefreshAll();
+                });
+                missionRow.Add(movementDropdown);
+
+                var availableEngagementInstructions = GetAvailableEngagementInstructions(card);
+                var engagementChoices = BuildEngagementChoiceLabels(card);
+                var engagementDropdown = new DropdownField("Engage", engagementChoices, FormatEngagementInstruction(currentEngagement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+                engagementDropdown.AddToClassList("mission-dropdown");
+                engagementDropdown.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+                engagementDropdown.RegisterValueChangedCallback(evt =>
+                {
+                    evt.StopPropagation();
+                    var selectedIndex = Mathf.Clamp(engagementDropdown.index, 0, Mathf.Max(0, availableEngagementInstructions.Count - 1));
+                    var nextEngagement = availableEngagementInstructions.Count > 0
+                        ? availableEngagementInstructions[selectedIndex]
+                        : EngagementInstructionType.UseUnitDefault;
+                    if (!CampaignRuntimeContext.Instance.TrySetUnitCardMissionInstructions(
+                            selectedHexSlotId,
+                            card.unitCardId,
+                            currentMovement,
+                            nextEngagement,
+                            currentPriority,
+                            currentTargetCardId,
+                            out var error))
+                    {
+                        SetStatus(error);
+                        engagementDropdown.SetValueWithoutNotify(FormatEngagementInstruction(currentEngagement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+                        return;
+                    }
+
+                    SetStatus(card.displayName + " engagement set to " + FormatEngagementInstruction(nextEngagement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions) + ".");
+                    RefreshAll();
+                });
+                missionRow.Add(engagementDropdown);
+
+                var availablePriorityInstructions = GetAvailablePriorityInstructions(card);
+                var priorityChoices = BuildPriorityChoiceLabels(card);
+                var priorityDropdown = new DropdownField("Priority", priorityChoices, FormatPriorityInstruction(currentPriority, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+                priorityDropdown.AddToClassList("mission-dropdown");
+                priorityDropdown.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+                priorityDropdown.RegisterValueChangedCallback(evt =>
+                {
+                    evt.StopPropagation();
+                    var selectedIndex = Mathf.Clamp(priorityDropdown.index, 0, Mathf.Max(0, availablePriorityInstructions.Count - 1));
+                    var nextPriority = availablePriorityInstructions.Count > 0
+                        ? availablePriorityInstructions[selectedIndex]
+                        : PriorityInstructionType.UseUnitDefault;
+                    if (!CampaignRuntimeContext.Instance.TrySetUnitCardMissionInstructions(
+                            selectedHexSlotId,
+                            card.unitCardId,
+                            currentMovement,
+                            currentEngagement,
+                            nextPriority,
+                            currentTargetCardId,
+                            out var error))
+                    {
+                        SetStatus(error);
+                        priorityDropdown.SetValueWithoutNotify(FormatPriorityInstruction(currentPriority, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+                        return;
+                    }
+
+                    SetStatus(card.displayName + " target priority set to " + FormatPriorityInstruction(nextPriority, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions) + ".");
+                    RefreshAll();
+                });
+                missionRow.Add(priorityDropdown);
+
+                if (currentMovement == MovementInstructionType.FollowAssignedTank)
+                {
+                    var eligibleTargets = GetEligibleEscortTargets(card.unitCardId);
+                    var targetChoices = BuildAssignedTargetChoiceLabels(eligibleTargets);
+                    var currentTargetLabel = ResolveAssignedTargetDisplayName(currentTargetCardId);
+                    if (!targetChoices.Contains(currentTargetLabel))
+                    {
+                        currentTargetLabel = targetChoices.Count > 0 ? targetChoices[0] : "None";
+                    }
+
+                    var targetDropdown = new DropdownField("Target", targetChoices, currentTargetLabel);
+                    targetDropdown.AddToClassList("mission-dropdown");
+                    targetDropdown.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+                    targetDropdown.RegisterValueChangedCallback(evt =>
+                    {
+                        evt.StopPropagation();
+                        var selectedIndex = Mathf.Clamp(targetDropdown.index, 0, Mathf.Max(0, targetChoices.Count - 1));
+                        var selectedLabel = selectedIndex >= 0 && selectedIndex < targetChoices.Count
+                            ? targetChoices[selectedIndex]
+                            : "None";
+                        var nextTargetCardId = ResolveAssignedTargetCardIdFromChoice(eligibleTargets, selectedLabel);
+                        if (!CampaignRuntimeContext.Instance.TrySetUnitCardMissionInstructions(
+                                selectedHexSlotId,
+                                card.unitCardId,
+                                currentMovement,
+                                currentEngagement,
+                                currentPriority,
+                                nextTargetCardId,
+                                out var error))
+                        {
+                            SetStatus(error);
+                            targetDropdown.SetValueWithoutNotify(currentTargetLabel);
+                            return;
+                        }
+
+                        SetStatus(card.displayName + " now follows " + ResolveAssignedTargetDisplayName(nextTargetCardId) + ".");
+                        RefreshAll();
+                    });
+                    missionRow.Add(targetDropdown);
+                }
+
+                rootElement.Add(missionRow);
+            }
+
             var equippedItems = CampaignRuntimeContext.Instance.GetEquippedUnitItems(card.unitCardId);
             var itemsRow = new VisualElement();
             itemsRow.AddToClassList("equipped-items-row");
@@ -482,6 +660,68 @@ namespace AutoBattler
             return rootElement;
         }
 
+        private VisualElement BuildScenePlayerUnitCard(ScenePlayerDeploymentData deployment)
+        {
+            var rootElement = new VisualElement();
+            rootElement.AddToClassList("unit-card");
+            rootElement.AddToClassList("unit-card-assigned");
+            rootElement.AddToClassList("unit-card-scene");
+
+            if (!string.IsNullOrWhiteSpace(draggedItemInstanceId))
+            {
+                if (CampaignRuntimeContext.Instance.CanEquipItemToSceneUnit(draggedItemInstanceId, deployment.deploymentUnitId, out _))
+                {
+                    rootElement.AddToClassList("unit-card-valid-target");
+                }
+                else
+                {
+                    rootElement.AddToClassList("unit-card-invalid-target");
+                }
+            }
+
+            var headerRow = new VisualElement();
+            headerRow.AddToClassList("unit-card-header");
+
+            var textBlock = new VisualElement();
+            textBlock.AddToClassList("unit-card-text");
+            textBlock.Add(new Label(deployment.displayName) { name = "UnitName" });
+            textBlock.Add(new Label(deployment.baseTemplateId + "  [Scene]") { name = "UnitClass" });
+            headerRow.Add(textBlock);
+            rootElement.Add(headerRow);
+
+            var missionRow = BuildSceneMissionRow(deployment);
+            rootElement.Add(missionRow);
+
+            var equippedItems = CampaignRuntimeContext.Instance.GetEquippedSceneUnitItems(deployment.deploymentUnitId);
+            var itemsRow = new VisualElement();
+            itemsRow.AddToClassList("equipped-items-row");
+            if (equippedItems.Count > 0)
+            {
+                for (var i = 0; i < equippedItems.Count; i++)
+                {
+                    itemsRow.Add(BuildEquippedItemChip(equippedItems[i]));
+                }
+            }
+            else
+            {
+                var emptyLabel = new Label("Drop item here");
+                emptyLabel.AddToClassList("equipped-item-empty");
+                itemsRow.Add(emptyLabel);
+            }
+
+            rootElement.Add(itemsRow);
+            rootElement.RegisterCallback<ClickEvent>(_ => OpenSceneUnitDetailPopup(deployment));
+            rootElement.RegisterCallback<PointerUpEvent>(_ => TryDropDraggedItemToSceneUnit(deployment.deploymentUnitId));
+            return rootElement;
+        }
+
+        private static Label BuildListSectionLabel(string text)
+        {
+            var label = new Label(text);
+            label.AddToClassList("list-section-label");
+            return label;
+        }
+
         private VisualElement BuildAssignedUnitDetails(OwnedUnitCard card)
         {
             var details = new VisualElement();
@@ -497,7 +737,15 @@ namespace AutoBattler
 
             var definition = unitSpawn.definition;
             details.Add(BuildDetailSectionLabel("Core"));
-            details.Add(BuildDetailLine("Mission: " + unitSpawn.mission + "  Type: " + definition.UnitType + "  Nav: " + BuildNavigationLabel(definition)));
+            details.Add(BuildDetailLine("Mission: " + unitSpawn.mission));
+            details.Add(BuildDetailLine("Move: " + FormatMovementInstruction(unitSpawn.movementInstruction, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions)
+                + "  Engage: " + FormatEngagementInstruction(unitSpawn.engagementInstruction, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions)
+                + "  Priority: " + FormatPriorityInstruction(unitSpawn.priorityInstruction, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions)));
+            if (unitSpawn.movementInstruction == MovementInstructionType.FollowAssignedTank)
+            {
+                details.Add(BuildDetailLine("Target: " + ResolveAssignedTargetDisplayName(unitSpawn.assignedTargetOwnedUnitCardId)));
+            }
+            details.Add(BuildDetailLine("Type: " + definition.UnitType + "  Nav: " + BuildNavigationLabel(definition)));
             details.Add(BuildDetailLine("Health: " + definition.MaxHealth + "  Armor: " + definition.Armor + "  Vision: " + definition.VisionRange.ToString("0.##")));
             details.Add(BuildDetailLine("Speed: " + definition.Speed.ToString("0.##")
                 + "  Accuracy: " + definition.Accuracy.ToString("0.##")
@@ -558,6 +806,177 @@ namespace AutoBattler
             return details;
         }
 
+        private VisualElement BuildAssignedUnitDetails(ScenePlayerDeploymentData deployment)
+        {
+            var details = new VisualElement();
+            details.AddToClassList("unit-card-details");
+
+            if (CampaignRuntimeContext.Instance == null
+                || !CampaignRuntimeContext.Instance.TryBuildResolvedUnitSpawnForScenePlayerUnit(deployment.deploymentUnitId, out var unitSpawn)
+                || unitSpawn?.definition == null)
+            {
+                details.Add(BuildDetailLine("Preview unavailable."));
+                return details;
+            }
+
+            var definition = unitSpawn.definition;
+            details.Add(BuildDetailSectionLabel("Core"));
+            details.Add(BuildDetailLine("Mission: " + unitSpawn.mission));
+            details.Add(BuildDetailLine("Move: " + FormatMovementInstruction(unitSpawn.movementInstruction, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions)
+                + "  Engage: " + FormatEngagementInstruction(unitSpawn.engagementInstruction, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions)
+                + "  Priority: " + FormatPriorityInstruction(unitSpawn.priorityInstruction, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions)));
+            details.Add(BuildDetailLine("Type: " + definition.UnitType + "  Nav: " + BuildNavigationLabel(definition)));
+            details.Add(BuildDetailLine("Health: " + definition.MaxHealth + "  Armor: " + definition.Armor + "  Vision: " + definition.VisionRange.ToString("0.##")));
+            details.Add(BuildDetailLine("Speed: " + definition.Speed.ToString("0.##")
+                + "  Accuracy: " + definition.Accuracy.ToString("0.##")
+                + "  Fire Rel: " + definition.FireReliability.ToString("0.##")
+                + "  Move Rel: " + definition.MoveReliability.ToString("0.##")));
+
+            details.Add(BuildDetailSectionLabel("Terrain"));
+            details.Add(BuildDetailLine("Speed: " + BuildTerrainProfileSummary(definition.TerrainSpeedProfile)));
+            details.Add(BuildDetailLine("Path: " + BuildTerrainProfileSummary(definition.TerrainPathCostProfile)));
+
+            details.Add(BuildDetailSectionLabel("Ammo"));
+            var ammoLines = BuildAmmoLines(definition);
+            if (ammoLines.Count == 0)
+            {
+                details.Add(BuildDetailLine("No ammo configured."));
+            }
+            else
+            {
+                for (var i = 0; i < ammoLines.Count; i++)
+                {
+                    details.Add(BuildDetailLine(ammoLines[i], true));
+                }
+            }
+
+            return details;
+        }
+
+        private VisualElement BuildSceneMissionRow(ScenePlayerDeploymentData deployment)
+        {
+            var missionRow = new VisualElement();
+            missionRow.AddToClassList("unit-card-mission-row");
+
+            var missionData = GetAssignedMission(deployment);
+            var currentMovement = missionData?.movementInstruction ?? deployment.movementInstruction;
+            var currentEngagement = missionData?.engagementInstruction ?? deployment.engagementInstruction;
+            var currentPriority = missionData?.priorityInstruction ?? deployment.priorityInstruction;
+            var currentTargetDeploymentId = missionData?.assignedTargetUnitCardId ?? deployment.assignedTargetDeploymentUnitId ?? string.Empty;
+            var unitType = GetSceneDeploymentUnitType(deployment);
+
+            var movementInstructions = GetAvailableMovementInstructions(unitType, deployment.deploymentUnitId);
+            var movementChoices = BuildMovementChoiceLabels(movementInstructions);
+            var currentMovementLabel = FormatMovementInstruction(currentMovement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions);
+            if (!movementChoices.Contains(currentMovementLabel))
+            {
+                currentMovementLabel = movementChoices.Count > 0 ? movementChoices[0] : string.Empty;
+            }
+
+            var movementDropdown = new DropdownField("Move", movementChoices, currentMovementLabel);
+            movementDropdown.AddToClassList("mission-dropdown");
+            movementDropdown.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+            movementDropdown.RegisterValueChangedCallback(evt =>
+            {
+                evt.StopPropagation();
+                var selectedIndex = Mathf.Clamp(movementDropdown.index, 0, Mathf.Max(0, movementInstructions.Count - 1));
+                var nextMovement = movementInstructions.Count > 0 ? movementInstructions[selectedIndex] : MovementInstructionType.UseUnitDefault;
+                var nextTargetId = nextMovement == MovementInstructionType.FollowAssignedTank
+                    ? ResolveDefaultAssignedTarget(deployment.deploymentUnitId, currentTargetDeploymentId)
+                    : string.Empty;
+                if (!CampaignRuntimeContext.Instance.TrySetUnitCardMissionInstructions(selectedHexSlotId, deployment.deploymentUnitId, nextMovement, currentEngagement, currentPriority, nextTargetId, out var error))
+                {
+                    SetStatus(error);
+                    movementDropdown.SetValueWithoutNotify(currentMovementLabel);
+                    return;
+                }
+
+                SetStatus(deployment.displayName + " movement set to " + FormatMovementInstruction(nextMovement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions) + ".");
+                RefreshAll();
+            });
+            missionRow.Add(movementDropdown);
+
+            var engagementInstructions = GetAvailableEngagementInstructions(unitType);
+            var engagementChoices = BuildEngagementChoiceLabels(engagementInstructions);
+            var engagementDropdown = new DropdownField("Engage", engagementChoices, FormatEngagementInstruction(currentEngagement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+            engagementDropdown.AddToClassList("mission-dropdown");
+            engagementDropdown.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+            engagementDropdown.RegisterValueChangedCallback(evt =>
+            {
+                evt.StopPropagation();
+                var selectedIndex = Mathf.Clamp(engagementDropdown.index, 0, Mathf.Max(0, engagementInstructions.Count - 1));
+                var nextEngagement = engagementInstructions.Count > 0 ? engagementInstructions[selectedIndex] : EngagementInstructionType.UseUnitDefault;
+                if (!CampaignRuntimeContext.Instance.TrySetUnitCardMissionInstructions(selectedHexSlotId, deployment.deploymentUnitId, currentMovement, nextEngagement, currentPriority, currentTargetDeploymentId, out var error))
+                {
+                    SetStatus(error);
+                    engagementDropdown.SetValueWithoutNotify(FormatEngagementInstruction(currentEngagement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+                    return;
+                }
+
+                SetStatus(deployment.displayName + " engagement set to " + FormatEngagementInstruction(nextEngagement, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions) + ".");
+                RefreshAll();
+            });
+            missionRow.Add(engagementDropdown);
+
+            var priorityInstructions = GetAvailablePriorityInstructions(unitType);
+            var priorityChoices = BuildPriorityChoiceLabels(priorityInstructions);
+            var priorityDropdown = new DropdownField("Priority", priorityChoices, FormatPriorityInstruction(currentPriority, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+            priorityDropdown.AddToClassList("mission-dropdown");
+            priorityDropdown.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+            priorityDropdown.RegisterValueChangedCallback(evt =>
+            {
+                evt.StopPropagation();
+                var selectedIndex = Mathf.Clamp(priorityDropdown.index, 0, Mathf.Max(0, priorityInstructions.Count - 1));
+                var nextPriority = priorityInstructions.Count > 0 ? priorityInstructions[selectedIndex] : PriorityInstructionType.UseUnitDefault;
+                if (!CampaignRuntimeContext.Instance.TrySetUnitCardMissionInstructions(selectedHexSlotId, deployment.deploymentUnitId, currentMovement, currentEngagement, nextPriority, currentTargetDeploymentId, out var error))
+                {
+                    SetStatus(error);
+                    priorityDropdown.SetValueWithoutNotify(FormatPriorityInstruction(currentPriority, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+                    return;
+                }
+
+                SetStatus(deployment.displayName + " target priority set to " + FormatPriorityInstruction(nextPriority, CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions) + ".");
+                RefreshAll();
+            });
+            missionRow.Add(priorityDropdown);
+
+            if (currentMovement == MovementInstructionType.FollowAssignedTank)
+            {
+                var eligibleTargets = GetEligibleEscortTargets(deployment.deploymentUnitId);
+                var targetChoices = BuildAssignedTargetChoiceLabels(eligibleTargets);
+                var currentTargetLabel = ResolveAssignedTargetDisplayName(currentTargetDeploymentId);
+                if (!targetChoices.Contains(currentTargetLabel))
+                {
+                    currentTargetLabel = targetChoices.Count > 0 ? targetChoices[0] : "None";
+                }
+
+                var targetDropdown = new DropdownField("Target", targetChoices, currentTargetLabel);
+                targetDropdown.AddToClassList("mission-dropdown");
+                targetDropdown.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+                targetDropdown.RegisterValueChangedCallback(evt =>
+                {
+                    evt.StopPropagation();
+                    var selectedIndex = Mathf.Clamp(targetDropdown.index, 0, Mathf.Max(0, targetChoices.Count - 1));
+                    var selectedLabel = selectedIndex >= 0 && selectedIndex < targetChoices.Count
+                        ? targetChoices[selectedIndex]
+                        : "None";
+                    var nextTargetId = ResolveAssignedTargetCardIdFromChoice(eligibleTargets, selectedLabel);
+                    if (!CampaignRuntimeContext.Instance.TrySetUnitCardMissionInstructions(selectedHexSlotId, deployment.deploymentUnitId, currentMovement, currentEngagement, currentPriority, nextTargetId, out var error))
+                    {
+                        SetStatus(error);
+                        targetDropdown.SetValueWithoutNotify(currentTargetLabel);
+                        return;
+                    }
+
+                    SetStatus(deployment.displayName + " now follows " + ResolveAssignedTargetDisplayName(nextTargetId) + ".");
+                    RefreshAll();
+                });
+                missionRow.Add(targetDropdown);
+            }
+
+            return missionRow;
+        }
+
         private void OpenUnitDetailPopup(OwnedUnitCard card)
         {
             if (card == null || unitDetailOverlay == null || unitDetailTitle == null || unitDetailContent == null)
@@ -568,6 +987,19 @@ namespace AutoBattler
             unitDetailTitle.text = card.displayName + "  [" + card.baseTemplateId + "]";
             unitDetailContent.Clear();
             unitDetailContent.Add(BuildAssignedUnitDetails(card));
+            unitDetailOverlay.style.display = DisplayStyle.Flex;
+        }
+
+        private void OpenSceneUnitDetailPopup(ScenePlayerDeploymentData deployment)
+        {
+            if (deployment == null || unitDetailOverlay == null || unitDetailTitle == null || unitDetailContent == null)
+            {
+                return;
+            }
+
+            unitDetailTitle.text = deployment.displayName + "  [" + deployment.baseTemplateId + " | Scene]";
+            unitDetailContent.Clear();
+            unitDetailContent.Add(BuildAssignedUnitDetails(deployment));
             unitDetailOverlay.style.display = DisplayStyle.Flex;
         }
 
@@ -739,8 +1171,9 @@ namespace AutoBattler
             }
 
             var selectedCards = CampaignRuntimeContext.Instance.GetCardsAssignedToSlot(selectedHexSlotId);
+            var sceneUnits = CampaignRuntimeContext.Instance.GetScenePlayerUnitsForSlot(selectedHexSlotId);
             lines.Add(string.Empty);
-            lines.Add("Selected Troop Cards: " + selectedCards.Count);
+            lines.Add("Selected Units: " + (sceneUnits.Count + selectedCards.Count));
             var deploymentGold = 0;
             for (var i = 0; i < selectedCards.Count; i++)
             {
@@ -751,9 +1184,18 @@ namespace AutoBattler
             }
 
             lines.Add("Deployment Gold: " + deploymentGold);
-            if (selectedCards.Count > 0)
+            if (sceneUnits.Count > 0 || selectedCards.Count > 0)
             {
-                lines.Add("Selected Units:");
+                lines.Add("Deployed Units:");
+                for (var i = 0; i < sceneUnits.Count; i++)
+                {
+                    var sceneUnit = sceneUnits[i];
+                    if (sceneUnit != null)
+                    {
+                        lines.Add("- " + sceneUnit.displayName + " [Scene]");
+                    }
+                }
+
                 for (var i = 0; i < selectedCards.Count; i++)
                 {
                     var selectedCard = selectedCards[i];
@@ -1004,6 +1446,28 @@ namespace AutoBattler
             EndDrag();
         }
 
+        private void TryDropDraggedItemToSceneUnit(string deploymentUnitId)
+        {
+            if (string.IsNullOrWhiteSpace(draggedItemInstanceId))
+            {
+                return;
+            }
+
+            var item = FindOwnedUnitItem(draggedItemInstanceId);
+            var itemLabel = item != null && lootCatalogs != null && lootCatalogs.TryGetItemDefinition(item.itemDefinitionId, out var itemDefinition) && itemDefinition != null
+                ? itemDefinition.displayName
+                : (item != null ? item.itemDefinitionId : "Item");
+            if (!CampaignRuntimeContext.Instance.TryEquipItemToSceneUnit(draggedItemInstanceId, deploymentUnitId, out var error))
+            {
+                SetStatus(error);
+                return;
+            }
+
+            SetStatus(itemLabel + " equipped to " + ResolveAssignedTargetDisplayName(deploymentUnitId) + ".");
+            RefreshAll();
+            EndDrag();
+        }
+
         private void EnsureDragGhost()
         {
             if (draggedMapGhost != null)
@@ -1046,14 +1510,30 @@ namespace AutoBattler
             }
 
             var item = FindOwnedUnitItem(draggedItemInstanceId);
-            if (item == null || string.IsNullOrWhiteSpace(item.equippedToUnitCardId))
+            if (item == null)
             {
                 return;
             }
 
-            if (!CampaignRuntimeContext.Instance.TryUnequipItemFromUnitCard(item.itemInstanceId, item.equippedToUnitCardId, out var error))
+            string error;
+            if (!string.IsNullOrWhiteSpace(item.equippedToUnitCardId))
             {
-                SetStatus(error);
+                if (!CampaignRuntimeContext.Instance.TryUnequipItemFromUnitCard(item.itemInstanceId, item.equippedToUnitCardId, out error))
+                {
+                    SetStatus(error);
+                    return;
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(item.equippedToSceneDeploymentUnitId))
+            {
+                if (!CampaignRuntimeContext.Instance.TryUnequipItemFromSceneUnit(item.itemInstanceId, item.equippedToSceneDeploymentUnitId, out error))
+                {
+                    SetStatus(error);
+                    return;
+                }
+            }
+            else
+            {
                 return;
             }
 
@@ -1399,6 +1879,409 @@ namespace AutoBattler
 
                 child.EnableInClassList("inventory-card-selected", string.Equals(selectedMapItemId, mapItemId, StringComparison.OrdinalIgnoreCase));
             }
+        }
+
+        private AssignedUnitMissionData GetAssignedMission(OwnedUnitCard card)
+        {
+            return card == null || string.IsNullOrWhiteSpace(selectedHexSlotId)
+                ? null
+                : CampaignRuntimeContext.Instance.GetAssignedMissionData(selectedHexSlotId, card.unitCardId);
+        }
+
+        private AssignedUnitMissionData GetAssignedMission(ScenePlayerDeploymentData deployment)
+        {
+            return deployment == null || string.IsNullOrWhiteSpace(selectedHexSlotId)
+                ? null
+                : CampaignRuntimeContext.Instance.GetAssignedMissionData(selectedHexSlotId, deployment.deploymentUnitId);
+        }
+
+        private List<MovementInstructionType> GetAvailableMovementInstructions(OwnedUnitCard card)
+        {
+            return GetAvailableMovementInstructions(GetCardUnitType(card), card?.unitCardId);
+        }
+
+        private List<MovementInstructionType> GetAvailableMovementInstructions(UnitType unitType, string excludedDeploymentId)
+        {
+            var instructions = new List<MovementInstructionType>();
+            var definitions = CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions?.movementInstructions;
+            if (definitions == null || definitions.Count == 0)
+            {
+                instructions.Add(MovementInstructionType.UseUnitDefault);
+                instructions.Add(MovementInstructionType.HoldPosition);
+                instructions.Add(MovementInstructionType.SeekVictoryPoint);
+                if (GetEligibleEscortTargets(excludedDeploymentId).Count > 0)
+                {
+                    instructions.Add(MovementInstructionType.FollowAssignedTank);
+                }
+
+                return instructions;
+            }
+
+            var eligibleEscortTargets = GetEligibleEscortTargets(excludedDeploymentId);
+            for (var i = 0; i < definitions.Count; i++)
+            {
+                var definition = definitions[i];
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                if (!AllowsUnitType(definition.allowedUnitTypes, unitType))
+                {
+                    continue;
+                }
+
+                if (definition.requiresAssignedTarget
+                    && string.Equals(definition.assignedTargetKind, "FriendlyTank", StringComparison.OrdinalIgnoreCase)
+                    && eligibleEscortTargets.Count == 0)
+                {
+                    continue;
+                }
+
+                instructions.Add(definition.instructionType);
+            }
+
+            return instructions;
+        }
+
+        private UnitType GetCardUnitType(OwnedUnitCard card)
+        {
+            if (card == null)
+            {
+                return UnitType.Infantry;
+            }
+
+            var catalog = GameDataCatalogLoader.Load();
+            return catalog.TryGetUnitTemplate(card.baseTemplateId, out var template) && template != null
+                ? template.UnitType
+                : UnitType.Infantry;
+        }
+
+        private UnitType GetSceneDeploymentUnitType(ScenePlayerDeploymentData deployment)
+        {
+            if (deployment == null)
+            {
+                return UnitType.Infantry;
+            }
+
+            var catalog = GameDataCatalogLoader.Load();
+            return catalog.TryGetUnitTemplate(deployment.baseTemplateId, out var template) && template != null
+                ? template.UnitType
+                : UnitType.Infantry;
+        }
+
+        private static bool AllowsUnitType(List<string> allowedUnitTypes, UnitType unitType)
+        {
+            if (allowedUnitTypes == null || allowedUnitTypes.Count == 0)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < allowedUnitTypes.Count; i++)
+            {
+                if (string.Equals(allowedUnitTypes[i], unitType.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private List<DeploymentEscortTargetOption> GetEligibleEscortTargets(string excludedDeploymentId)
+        {
+            var eligibleTargets = new List<DeploymentEscortTargetOption>();
+            var assignedCards = CampaignRuntimeContext.Instance.GetCardsAssignedToSlot(selectedHexSlotId);
+            for (var i = 0; i < assignedCards.Count; i++)
+            {
+                var candidate = assignedCards[i];
+                if (candidate == null
+                    || string.Equals(candidate.unitCardId, excludedDeploymentId, StringComparison.OrdinalIgnoreCase)
+                    || GetCardUnitType(candidate) != UnitType.Tank)
+                {
+                    continue;
+                }
+
+                eligibleTargets.Add(new DeploymentEscortTargetOption
+                {
+                    deploymentUnitId = candidate.unitCardId,
+                    displayName = candidate.displayName
+                });
+            }
+
+            var sceneUnits = CampaignRuntimeContext.Instance.GetScenePlayerUnitsForSlot(selectedHexSlotId);
+            for (var i = 0; i < sceneUnits.Count; i++)
+            {
+                var candidate = sceneUnits[i];
+                if (candidate == null
+                    || string.Equals(candidate.deploymentUnitId, excludedDeploymentId, StringComparison.OrdinalIgnoreCase)
+                    || GetSceneDeploymentUnitType(candidate) != UnitType.Tank)
+                {
+                    continue;
+                }
+
+                eligibleTargets.Add(new DeploymentEscortTargetOption
+                {
+                    deploymentUnitId = candidate.deploymentUnitId,
+                    displayName = candidate.displayName
+                });
+            }
+
+            return eligibleTargets;
+        }
+
+        private string ResolveDefaultAssignedTarget(string excludedDeploymentId, string currentAssignedTargetCardId)
+        {
+            var eligibleTargets = GetEligibleEscortTargets(excludedDeploymentId);
+            if (eligibleTargets.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var currentIndex = -1;
+            for (var i = 0; i < eligibleTargets.Count; i++)
+            {
+                if (string.Equals(eligibleTargets[i].deploymentUnitId, currentAssignedTargetCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            return currentIndex >= 0
+                ? eligibleTargets[currentIndex].deploymentUnitId
+                : eligibleTargets[0].deploymentUnitId;
+        }
+
+        private string GetAssignedTargetLabel(OwnedUnitCard card)
+        {
+            var missionData = GetAssignedMission(card);
+            return missionData == null ? "None" : ResolveAssignedTargetDisplayName(missionData.assignedTargetUnitCardId);
+        }
+
+        private List<string> BuildMovementChoiceLabels(List<MovementInstructionType> instructions)
+        {
+            var labels = new List<string>();
+            for (var i = 0; i < instructions.Count; i++)
+            {
+                labels.Add(FormatMovementInstruction(instructions[i], CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+            }
+
+            return labels;
+        }
+
+        private List<EngagementInstructionType> GetAvailableEngagementInstructions(OwnedUnitCard card)
+        {
+            return GetAvailableEngagementInstructions(GetCardUnitType(card));
+        }
+
+        private List<EngagementInstructionType> GetAvailableEngagementInstructions(UnitType unitType)
+        {
+            var instructions = new List<EngagementInstructionType>();
+            var definitions = CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions?.engagementInstructions;
+            if (definitions == null || definitions.Count == 0)
+            {
+                instructions.Add(EngagementInstructionType.UseUnitDefault);
+                instructions.Add(EngagementInstructionType.AttackEnemies);
+                instructions.Add(EngagementInstructionType.AvoidEngagement);
+                return instructions;
+            }
+
+            for (var i = 0; i < definitions.Count; i++)
+            {
+                if (definitions[i] != null && AllowsUnitType(definitions[i].allowedUnitTypes, unitType))
+                {
+                    instructions.Add(definitions[i].instructionType);
+                }
+            }
+
+            return instructions;
+        }
+
+        private List<string> BuildEngagementChoiceLabels(OwnedUnitCard card)
+        {
+            return BuildEngagementChoiceLabels(GetAvailableEngagementInstructions(card));
+        }
+
+        private List<string> BuildEngagementChoiceLabels(List<EngagementInstructionType> instructions)
+        {
+            var labels = new List<string>();
+            for (var i = 0; i < instructions.Count; i++)
+            {
+                labels.Add(FormatEngagementInstruction(instructions[i], CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+            }
+
+            return labels;
+        }
+
+        private List<PriorityInstructionType> GetAvailablePriorityInstructions(OwnedUnitCard card)
+        {
+            return GetAvailablePriorityInstructions(GetCardUnitType(card));
+        }
+
+        private List<PriorityInstructionType> GetAvailablePriorityInstructions(UnitType unitType)
+        {
+            var instructions = new List<PriorityInstructionType>();
+            var definitions = CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions?.priorityInstructions;
+            if (definitions == null || definitions.Count == 0)
+            {
+                instructions.Add(PriorityInstructionType.UseUnitDefault);
+                instructions.Add(PriorityInstructionType.PrioritizeInfantry);
+                instructions.Add(PriorityInstructionType.PrioritizeTanks);
+                return instructions;
+            }
+
+            for (var i = 0; i < definitions.Count; i++)
+            {
+                if (definitions[i] != null && AllowsUnitType(definitions[i].allowedUnitTypes, unitType))
+                {
+                    instructions.Add(definitions[i].instructionType);
+                }
+            }
+
+            return instructions;
+        }
+
+        private List<string> BuildPriorityChoiceLabels(OwnedUnitCard card)
+        {
+            return BuildPriorityChoiceLabels(GetAvailablePriorityInstructions(card));
+        }
+
+        private List<string> BuildPriorityChoiceLabels(List<PriorityInstructionType> instructions)
+        {
+            var labels = new List<string>();
+            for (var i = 0; i < instructions.Count; i++)
+            {
+                labels.Add(FormatPriorityInstruction(instructions[i], CampaignRuntimeContext.Instance?.Catalogs?.MissionInstructions));
+            }
+
+            return labels;
+        }
+
+        private static List<string> BuildAssignedTargetChoiceLabels(List<DeploymentEscortTargetOption> eligibleTargets)
+        {
+            var labels = new List<string>();
+            if (eligibleTargets == null)
+            {
+                return labels;
+            }
+
+            for (var i = 0; i < eligibleTargets.Count; i++)
+            {
+                labels.Add(eligibleTargets[i]?.displayName ?? "Missing");
+            }
+
+            return labels;
+        }
+
+        private static string ResolveAssignedTargetCardIdFromChoice(List<DeploymentEscortTargetOption> eligibleTargets, string selectedLabel)
+        {
+            if (eligibleTargets == null || string.IsNullOrWhiteSpace(selectedLabel))
+            {
+                return string.Empty;
+            }
+
+            for (var i = 0; i < eligibleTargets.Count; i++)
+            {
+                if (string.Equals(eligibleTargets[i]?.displayName, selectedLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    return eligibleTargets[i].deploymentUnitId;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private string ResolveAssignedTargetDisplayName(string assignedTargetCardId)
+        {
+            if (string.IsNullOrWhiteSpace(assignedTargetCardId))
+            {
+                return "None";
+            }
+
+            var targetCard = FindUnitCard(assignedTargetCardId);
+            if (targetCard != null)
+            {
+                return targetCard.displayName;
+            }
+
+            var sceneUnits = CampaignRuntimeContext.Instance.GetScenePlayerUnitsForSlot(selectedHexSlotId);
+            for (var i = 0; i < sceneUnits.Count; i++)
+            {
+                if (sceneUnits[i] != null && string.Equals(sceneUnits[i].deploymentUnitId, assignedTargetCardId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return sceneUnits[i].displayName;
+                }
+            }
+
+            return "Missing";
+        }
+
+        private static string FormatMovementInstruction(MovementInstructionType instruction, MissionInstructionDefinitionCatalog catalog)
+        {
+            var definitions = catalog?.movementInstructions;
+            if (definitions != null)
+            {
+                for (var i = 0; i < definitions.Count; i++)
+                {
+                    if (definitions[i] != null && definitions[i].instructionType == instruction && !string.IsNullOrWhiteSpace(definitions[i].displayName))
+                    {
+                        return definitions[i].displayName;
+                    }
+                }
+            }
+
+            return instruction switch
+            {
+                MovementInstructionType.HoldPosition => "Hold Position",
+                MovementInstructionType.SeekVictoryPoint => "Seek VictoryPoint",
+                MovementInstructionType.FollowAssignedTank => "Follow Assigned Tank",
+                _ => "Unit Default"
+            };
+        }
+
+        private static string FormatEngagementInstruction(EngagementInstructionType instruction, MissionInstructionDefinitionCatalog catalog)
+        {
+            var definitions = catalog?.engagementInstructions;
+            if (definitions != null)
+            {
+                for (var i = 0; i < definitions.Count; i++)
+                {
+                    if (definitions[i] != null && definitions[i].instructionType == instruction && !string.IsNullOrWhiteSpace(definitions[i].displayName))
+                    {
+                        return definitions[i].displayName;
+                    }
+                }
+            }
+
+            return instruction switch
+            {
+                EngagementInstructionType.AttackEnemies => "Attack Enemies",
+                EngagementInstructionType.AvoidEngagement => "Avoid Engagement",
+                _ => "Unit Default"
+            };
+        }
+
+        private static string FormatPriorityInstruction(PriorityInstructionType instruction, MissionInstructionDefinitionCatalog catalog)
+        {
+            var definitions = catalog?.priorityInstructions;
+            if (definitions != null)
+            {
+                for (var i = 0; i < definitions.Count; i++)
+                {
+                    if (definitions[i] != null && definitions[i].instructionType == instruction && !string.IsNullOrWhiteSpace(definitions[i].displayName))
+                    {
+                        return definitions[i].displayName;
+                    }
+                }
+            }
+
+            return instruction switch
+            {
+                PriorityInstructionType.PrioritizeInfantry => "Prioritize Infantry",
+                PriorityInstructionType.PrioritizeTanks => "Prioritize Tanks",
+                _ => "Unit Default"
+            };
         }
 
         private OwnedMapItem ResolveDetailMap(HexSlotSaveData selectedSlot)

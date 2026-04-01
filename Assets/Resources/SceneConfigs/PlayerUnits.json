@@ -2,7 +2,12 @@
   "units": [
     {
       "unitName": "First Tank",
-      "unitType": "Guard Tank"
+      "unitType": "Guard Tank",
+      "missionInstructions": {
+        "move": "SeekVictoryPoint",
+        "engage": "AttackEnemies",
+        "priority": "PrioritizeTanks"
+      }
     },
     {
       "unitName": "Blue Shellers",

@@ -97,6 +97,7 @@ namespace AutoBattler
 
                 if (TryBuildUnitSpawnConfig(entryObject, catalog, out var unitSpawnConfig))
                 {
+                    unitSpawnConfig.sceneUnitId = ResolveSceneUnitId(entryObject, "blue", resolvedUnits.Count);
                     resolvedUnits.Add(unitSpawnConfig);
                 }
             }
@@ -171,6 +172,7 @@ namespace AutoBattler
 
                 if (TryBuildUnitSpawnConfig(entryObject, catalog, out var unitSpawnConfig))
                 {
+                    unitSpawnConfig.sceneUnitId = ResolveSceneUnitId(entryObject, key, units.Count);
                     units.Add(unitSpawnConfig);
                 }
             }
@@ -225,6 +227,9 @@ namespace AutoBattler
             {
                 count = Mathf.Max(1, JsonDataHelper.GetInt(source, "count", 1)),
                 mission = resolvedMission,
+                movementInstruction = ResolveMovementInstruction(source),
+                engagementInstruction = ResolveEngagementInstruction(source),
+                priorityInstruction = ResolvePriorityInstruction(source),
                 definition = definition,
                 lootTableId = JsonDataHelper.GetString(source, "lootTableId", string.Empty),
                 returnToHeadquartersIfSurvives = GetBool(source, "returnToHeadquartersIfSurvives", false),
@@ -339,6 +344,50 @@ namespace AutoBattler
                 double doubleValue => Math.Abs(doubleValue) > double.Epsilon,
                 _ => fallback
             };
+        }
+
+        private static string ResolveSceneUnitId(Dictionary<string, object> source, string teamKey, int index)
+        {
+            var explicitId = JsonDataHelper.GetString(source, "sceneUnitId", string.Empty);
+            if (!string.IsNullOrWhiteSpace(explicitId))
+            {
+                return explicitId;
+            }
+
+            return (teamKey ?? "unit") + "_unit_" + (index + 1);
+        }
+
+        private static MovementInstructionType ResolveMovementInstruction(Dictionary<string, object> source)
+        {
+            var missionInstructions = JsonDataHelper.AsObject(source != null && source.TryGetValue("missionInstructions", out var value) ? value : null);
+            if (missionInstructions == null)
+            {
+                return MovementInstructionType.UseUnitDefault;
+            }
+
+            return JsonDataHelper.GetEnum(missionInstructions, "move", MovementInstructionType.UseUnitDefault);
+        }
+
+        private static EngagementInstructionType ResolveEngagementInstruction(Dictionary<string, object> source)
+        {
+            var missionInstructions = JsonDataHelper.AsObject(source != null && source.TryGetValue("missionInstructions", out var value) ? value : null);
+            if (missionInstructions == null)
+            {
+                return EngagementInstructionType.UseUnitDefault;
+            }
+
+            return JsonDataHelper.GetEnum(missionInstructions, "engage", EngagementInstructionType.UseUnitDefault);
+        }
+
+        private static PriorityInstructionType ResolvePriorityInstruction(Dictionary<string, object> source)
+        {
+            var missionInstructions = JsonDataHelper.AsObject(source != null && source.TryGetValue("missionInstructions", out var value) ? value : null);
+            if (missionInstructions == null)
+            {
+                return PriorityInstructionType.UseUnitDefault;
+            }
+
+            return JsonDataHelper.GetEnum(missionInstructions, "priority", PriorityInstructionType.UseUnitDefault);
         }
 
         private static string BuildPersistentUnitOverrideJson(Dictionary<string, object> source)

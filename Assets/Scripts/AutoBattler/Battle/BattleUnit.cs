@@ -23,9 +23,17 @@ namespace AutoBattler
         private float groundOffset;
         private bool isAlive;
         private NavMeshAgent navigationAgent;
+        private MovementInstructionType movementInstruction;
+        private EngagementInstructionType engagementInstruction;
+        private PriorityInstructionType priorityInstruction;
+        private string assignedTargetOwnedUnitCardId;
+        private string deploymentUnitId;
 
         public Team Team { get; private set; }
         public MissionType Mission { get; private set; }
+        public MovementInstructionType MovementInstruction => movementInstruction;
+        public EngagementInstructionType EngagementInstruction => engagementInstruction;
+        public PriorityInstructionType PriorityInstruction => priorityInstruction;
         public UnitDefinition Definition => unitDefinition;
         public bool IsAlive => isAlive;
         public int CurrentHealth => currentHealth;
@@ -37,10 +45,12 @@ namespace AutoBattler
         public int NavigationAgentTypeId => navigationAgent != null ? navigationAgent.agentTypeID : NavMeshAgentTypeResolver.GetDefaultAgentTypeId();
         public string NavigationPathStatus => navigationAgent != null && navigationAgent.hasPath ? navigationAgent.pathStatus.ToString() : "NoPath";
         public string OwnedUnitCardId { get; private set; }
+        public string DeploymentUnitId => deploymentUnitId;
         public string LootTableId { get; private set; }
         public bool ReturnToHeadquartersIfSurvives { get; private set; }
         public bool CaptureAsUnitCardOnDeath { get; private set; }
         public string PersistentOverrideJson { get; private set; }
+        public string AssignedTargetOwnedUnitCardId => assignedTargetOwnedUnitCardId;
 
         public void Initialize(UnitDefinition definition, Team team, MissionType mission, Vector3 homePosition, Vector3 objective, string lootTableId = null)
         {
@@ -68,6 +78,20 @@ namespace AutoBattler
             BattleUnitRegistry.Register(this);
         }
 
+        public void ConfigureMissionInstructions(
+            MovementInstructionType movement,
+            EngagementInstructionType engagement,
+            PriorityInstructionType priority,
+            string assignedTargetCardId)
+        {
+            movementInstruction = movement;
+            engagementInstruction = engagement;
+            priorityInstruction = priority;
+            assignedTargetOwnedUnitCardId = movement == MovementInstructionType.FollowAssignedTank
+                ? assignedTargetCardId ?? string.Empty
+                : string.Empty;
+        }
+
         private void Update()
         {
             if (!isAlive || unitDefinition == null)
@@ -81,28 +105,28 @@ namespace AutoBattler
                 return;
             }
 
-            var visibleEnemy = BattleUnitRegistry.GetClosestEnemy(this, unitDefinition.VisionRange);
-
-            if (visibleEnemy != null)
+            var visibleEnemy = ResolveVisibleEnemy();
+            if (visibleEnemy != null && ShouldEngageEnemy(visibleEnemy))
             {
                 Engage(visibleEnemy);
                 return;
             }
 
-            var visibleSpawner = BattleSpawnerRegistry.GetClosestEnemySpawner(this, unitDefinition.VisionRange);
+            var visibleSpawner = engagementInstruction == EngagementInstructionType.AvoidEngagement
+                ? null
+                : BattleSpawnerRegistry.GetClosestEnemySpawner(this, unitDefinition.VisionRange);
             if (visibleSpawner != null)
             {
                 EngageSpawner(visibleSpawner);
                 return;
             }
 
-            if (Mission == MissionType.Guard)
+            if (movementInstruction == MovementInstructionType.FollowAssignedTank && TryFollowAssignedTarget())
             {
-                ReturnToGuardPosition();
                 return;
             }
 
-            MoveTowards(ResolveObjectivePosition());
+            ExecuteIdleMovementInstruction();
         }
 
         public void ApplyDamage(int incomingDamage, BattleUnit attacker)
@@ -128,6 +152,11 @@ namespace AutoBattler
         public void LinkOwnedUnitCard(string ownedUnitCardId)
         {
             OwnedUnitCardId = ownedUnitCardId;
+        }
+
+        public void LinkDeploymentUnit(string targetDeploymentUnitId)
+        {
+            deploymentUnitId = targetDeploymentUnitId ?? string.Empty;
         }
 
         public void ConfigureCampaignTransfer(bool returnToHeadquartersIfSurvives, bool captureAsUnitCardOnDeath, string persistentOverrideJson)
@@ -233,6 +262,108 @@ namespace AutoBattler
             return bestAmmo != null;
         }
 
+        private BattleUnit ResolveVisibleEnemy()
+        {
+            return priorityInstruction switch
+            {
+                PriorityInstructionType.PrioritizeInfantry => BattleUnitRegistry.GetClosestEnemy(this, unitDefinition.VisionRange, UnitType.Infantry),
+                PriorityInstructionType.PrioritizeTanks => BattleUnitRegistry.GetClosestEnemy(this, unitDefinition.VisionRange, UnitType.Tank),
+                _ => BattleUnitRegistry.GetClosestEnemy(this, unitDefinition.VisionRange)
+            };
+        }
+
+        private bool ShouldEngageEnemy(BattleUnit visibleEnemy)
+        {
+            if (visibleEnemy == null)
+            {
+                return false;
+            }
+
+            if (engagementInstruction == EngagementInstructionType.AvoidEngagement)
+            {
+                return ShouldSelfDefendAgainst(visibleEnemy);
+            }
+
+            if (movementInstruction == MovementInstructionType.FollowAssignedTank)
+            {
+                return ShouldProtectAssignedTarget(visibleEnemy);
+            }
+
+            return true;
+        }
+
+        private bool ShouldSelfDefendAgainst(BattleUnit visibleEnemy)
+        {
+            var distanceToEnemy = GetDistanceTo(visibleEnemy.transform.position);
+            var selfDefenseRange = Mathf.Max(GetMaxAvailableAttackRange(), 5f);
+            var enemyThreatRange = visibleEnemy.GetMaxThreatRange();
+            return distanceToEnemy <= selfDefenseRange || distanceToEnemy <= enemyThreatRange;
+        }
+
+        private bool ShouldProtectAssignedTarget(BattleUnit visibleEnemy)
+        {
+            if (visibleEnemy == null)
+            {
+                return false;
+            }
+
+            var assignedTarget = ResolveAssignedTarget();
+            if (assignedTarget == null)
+            {
+                return true;
+            }
+
+            var protectRadius = Mathf.Max(6f, assignedTarget.GetMaxThreatRange());
+            return Vector3.Distance(assignedTarget.transform.position, visibleEnemy.transform.position) <= protectRadius
+                || GetDistanceTo(visibleEnemy.transform.position) <= Mathf.Max(5f, GetMaxAvailableAttackRange());
+        }
+
+        private bool TryFollowAssignedTarget()
+        {
+            var assignedTarget = ResolveAssignedTarget();
+            if (assignedTarget == null)
+            {
+                return false;
+            }
+
+            var followDistance = assignedTarget.Definition != null && assignedTarget.Definition.UnitType == UnitType.Tank ? 3.5f : 2f;
+            MoveTowards(assignedTarget.transform.position, followDistance);
+            return true;
+        }
+
+        private BattleUnit ResolveAssignedTarget()
+        {
+            return BattleUnitRegistry.GetAliveUnitByDeploymentId(assignedTargetOwnedUnitCardId);
+        }
+
+        private void ExecuteIdleMovementInstruction()
+        {
+            switch (movementInstruction)
+            {
+                case MovementInstructionType.HoldPosition:
+                    ReturnToGuardPosition();
+                    return;
+                case MovementInstructionType.SeekVictoryPoint:
+                    MoveTowards(ResolveObjectivePosition());
+                    return;
+                case MovementInstructionType.FollowAssignedTank:
+                    if (TryFollowAssignedTarget())
+                    {
+                        return;
+                    }
+
+                    break;
+            }
+
+            if (Mission == MissionType.Guard)
+            {
+                ReturnToGuardPosition();
+                return;
+            }
+
+            MoveTowards(ResolveObjectivePosition());
+        }
+
         private float GetMaxAvailableAttackRange()
         {
             var ammunition = unitDefinition.Ammunition;
@@ -332,6 +463,11 @@ namespace AutoBattler
             }
 
             return maxRange;
+        }
+
+        private float GetMaxThreatRange()
+        {
+            return Mathf.Max(GetMaxAvailableAttackRange(), GetMaxConfiguredAttackRange());
         }
 
         private void MoveTowards(Vector3 targetPosition, float stoppingDistance = 0f)

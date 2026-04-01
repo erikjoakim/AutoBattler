@@ -131,7 +131,15 @@ namespace AutoBattler
     public sealed class UnitSpawnConfig
     {
         public int count;
+        public string sceneUnitId;
+        public string deploymentUnitId;
         public MissionType mission;
+        public MovementInstructionType movementInstruction;
+        public EngagementInstructionType engagementInstruction;
+        public PriorityInstructionType priorityInstruction;
+        public string assignedTargetOwnedUnitCardId;
+        public PlayerMissionAssignmentType playerMissionAssignment;
+        public string escortTargetOwnedUnitCardId;
         public UnitDefinition definition;
         public string ownedUnitCardId;
         public string lootTableId;
